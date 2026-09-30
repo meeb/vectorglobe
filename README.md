@@ -253,17 +253,17 @@ swapping between three themes.
 
 Publishing to npm runs through [`.github/workflows/release.yml`](.github/workflows/release.yml) and
 uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/): GitHub Actions authenticates
-to npm via OIDC, so there is no `NPM_TOKEN` secret sitting in the repo. It fires when a GitHub Release
-is published, checks the release tag against `package.json`, then runs the full gate (lint, typecheck,
-test, build, size budget) before publishing.
+to npm via OIDC, so there is no `NPM_TOKEN` secret sitting in the repo. It fires on every `vX.Y.Z` tag
+push, checks the tag against `package.json`, runs the full gate (lint, typecheck, test, build, size
+budget), publishes, then records the release on GitHub - all inside the workflow, nothing to install
+or click locally.
 
 ```sh
 npm version minor              # bump package.json and package-lock.json, commit, tag v0.2.0
-git push --follow-tags
-gh release create v0.2.0 --generate-notes   # or draft it from the same tag in the GitHub UI
+git push --follow-tags         # pushing the tag is what triggers the workflow
 ```
 
-Publishing the release is what triggers the workflow. A draft release does nothing until published.
+That's the entire release. Watch it run under the repo's Actions tab.
 
 ### One-time setup
 
@@ -292,8 +292,33 @@ code-related reason.
 
 ## Browser support
 
-Chrome 80, Firefox 78, Safari 15, Edge 88 and later. Anything older, or anything without WebGL, gets
-the 2D renderer as long as it supports the 2D canvas API.
+Verified with headless [Playwright](https://playwright.dev/) runs of the built `dist/vectorglobe.min.js`
+against current Chromium, Firefox and WebKit (Safari's engine): each one constructs the map, exercises
+the full API (points, both route types, theme/config changes, camera moves, a forced 3D-to-2D switch),
+and renders correctly with zero console or page errors. That is real per-engine evidence, not an
+inference from build settings — but it is evidence for *current* browsers, not for how old a release
+this still works on; the four points below are, so take them as an informed floor rather than a
+tested one.
+
+- **3D needs any WebGL, not specifically WebGL2.** The renderer prefers a WebGL2 context and falls
+  back to WebGL1 (`src/render/webgl/context.ts`), and either is enough to select 3D mode
+  (`src/core/globe.ts`). WebGL1 has been in every major browser since roughly 2014; WebGL2 is the
+  more recent floor and is what determines the numbers below.
+- **The build enforces a JS syntax ceiling**, not a tested version: `scripts/build.ts`'s esbuild
+  `target` (`es2020`, `chrome80`, `firefox78`, `safari15`, `edge88`) makes the build itself fail if
+  the source ever uses syntax older engines can't parse. That is mechanically real, but it says
+  nothing about the Web APIs actually called at runtime (`ResizeObserver`, `PointerEvent` and
+  `setPointerCapture`, `matchMedia`, `queueMicrotask`, `getContext('webgl2'|'webgl')`), which were not
+  independently audited against those specific old versions.
+- **Safari 15 is the one number with a specific, checkable reason**: that's the release where Safari
+  enabled WebGL2 by default ([caniuse](https://caniuse.com/webgl2)). It is not the oldest Safari that
+  renders a globe at all - just the oldest one that gets the WebGL2 path rather than the WebGL1
+  fallback.
+- **Edge isn't independently tested**; from Edge 79 onward it shares Chromium and V8 with Chrome, so
+  Chromium coverage is a reasonable proxy, not a substitute.
+
+Anything without WebGL at all gets the 2D canvas renderer instead, which has no WebGL dependency and a
+much older real floor.
 
 ## Licence
 

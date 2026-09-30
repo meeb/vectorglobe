@@ -34,7 +34,6 @@ import type {
   Theme,
   VectorGlobeOptions,
 } from '../types.ts';
-import { clamp } from '../util/easing.ts';
 import { deepMerge } from '../util/merge.ts';
 import { Camera } from './camera.ts';
 import { detectCapabilities } from './capabilities.ts';
@@ -120,7 +119,12 @@ export class Globe {
     this.root.appendChild(this.labels.element);
 
     this.applyThemeVariables();
-    this.controls = new Controls(this.root, this.controlsDelegate(), this.config.interactive);
+    this.controls = new Controls(
+      this.root,
+      this.controlsDelegate(),
+      this.config.interactive,
+      this.config.zoom.speed,
+    );
     this.observeResize();
     this.measure();
 
@@ -238,6 +242,7 @@ export class Globe {
     this.styleRevision++;
 
     this.camera.setLimits(this.config.zoom);
+    this.controls.setZoomSpeed(this.config.zoom.speed);
     this.controls.setEnabled(this.config.interactive);
     if (config.autoRotate?.enabled) {
       // Turning rotation on is a deliberate instruction, so it overrides an earlier interaction
@@ -438,7 +443,26 @@ export class Globe {
     this.emitter.emit('camerachange', { camera: this.camera.state });
   }
 
-  /** Degrees of longitude and latitude covered by one pixel of drag at the current zoom. */
+  /**
+   * Degrees of longitude and latitude covered by one pixel of drag at the current zoom.
+   *
+   * The target feel is direct manipulation: the point under the cursor at the start of a drag
+   * should stay under the cursor, the way grabbing a real globe would. With no tilt, the eye looks
+   * straight at the nearest surface point from a distance of `altitude - 1` (altitude is measured
+   * from the globe's centre, so 1 is ground level); a small rotation moves that point across the
+   * sphere's tangent plane by an arc length equal to the rotation itself (in radians, on a unit
+   * sphere), and standard perspective projection turns a sideways offset at distance `d` into
+   * roughly `offset / d` radians of apparent angle, which spans `screenHeight / (2 tan(fovY/2))`
+   * pixels per radian. Solving that chain for "radians of rotation per pixel of drag" gives the
+   * formula below. It does not depend on width despite covering longitude too: for an ordinary
+   * (non-anamorphic) perspective camera the horizontal and vertical pixels-per-radian figures are
+   * always equal, since aspect ratio is exactly the ratio of the two field of view tangents.
+   *
+   * This used to instead be based on the angular size of the *globe itself* as seen from the eye,
+   * which is a different, unrelated quantity - it happened to keep pace reasonably well zoomed
+   * out, but at close zoom it made a drag of a few percent of the window width sweep the entire
+   * visible area many times over.
+   */
   private dragScale(): [number, number] {
     if (this.renderer.mode === '2d') {
       // One world spans the container width at the reference altitude, scaled by the zoom.
@@ -447,10 +471,9 @@ export class Globe {
       return [degreesPerPixel, degreesPerPixel];
     }
 
-    // How many degrees of the globe's surface one pixel covers, from the angular size of the globe.
-    const visibleAngle = 2 * Math.asin(clamp(1 / this.camera.altitude, -1, 1));
-    const globePixels = (this.height * visibleAngle) / FIELD_OF_VIEW;
-    const degreesPerPixel = 180 / Math.max(1, globePixels);
+    const height = Math.max(this.camera.altitude - 1, 0.01);
+    const radiansPerPixel = (height * 2 * Math.tan(FIELD_OF_VIEW / 2)) / Math.max(1, this.height);
+    const degreesPerPixel = radiansPerPixel * (180 / Math.PI);
     return [degreesPerPixel, degreesPerPixel];
   }
 

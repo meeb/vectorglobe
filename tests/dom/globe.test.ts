@@ -208,6 +208,76 @@ describe('camera', () => {
     map.setCamera({ lat: 5 });
     expect(handler).toHaveBeenCalled();
   });
+
+  it('zooms by the same relative amount close to the surface as far from it', () => {
+    // Regression test for the bug this replaced: scaling the raw altitude made the same wheel
+    // notch change the *height* above the surface far more near the minimum zoom than far from
+    // it. Scaling the height itself keeps one notch the same relative step everywhere.
+    const wheel = (root: HTMLElement) =>
+      root.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true }));
+
+    map = vectorGlobe(container, { config: { camera: { altitude: 6 } } });
+    const root = container.querySelector('.vg-root') as HTMLElement;
+    wheel(root);
+    const farRatio = (map.getCamera().altitude - 1) / 5;
+
+    map.setCamera({ altitude: 1.2 });
+    wheel(root);
+    const nearRatio = (map.getCamera().altitude - 1) / 0.2;
+
+    expect(nearRatio).toBeCloseTo(farRatio, 6);
+  });
+
+  it('applies config.zoom.speed to wheel zoom, live', () => {
+    map = vectorGlobe(container, { config: { camera: { altitude: 2 } } });
+    const root = container.querySelector('.vg-root') as HTMLElement;
+
+    map.setConfig({ zoom: { speed: 1.5 } });
+    root.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true }));
+    expect(map.getCamera().altitude - 1).toBeCloseTo(1 * 1.5, 6);
+  });
+
+  it('drags the surface under the cursor rather than spinning far past it at close zoom', () => {
+    // Regression test for the bug this replaced: dragScale used to be based on the angular size
+    // of the globe as seen from the eye, which made a drag of a small fraction of the window width
+    // sweep the entire visible area many times over once zoomed in close - exactly the "a couple of
+    // centimetres sends a point clean off the other side of the screen" report this fixed.
+    map = vectorGlobe(container, { config: { camera: { altitude: 1.15, tilt: 0 } } });
+    const root = container.querySelector('.vg-root') as HTMLElement;
+    const drag = (dx: number): void => {
+      root.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          clientX: 400,
+          clientY: 300,
+          bubbles: true,
+          pointerId: 1,
+        }),
+      );
+      root.dispatchEvent(
+        new PointerEvent('pointermove', {
+          clientX: 400 + dx,
+          clientY: 300,
+          bubbles: true,
+          pointerId: 1,
+        }),
+      );
+      root.dispatchEvent(
+        new PointerEvent('pointerup', {
+          clientX: 400 + dx,
+          clientY: 300,
+          bubbles: true,
+          pointerId: 1,
+        }),
+      );
+    };
+
+    drag(150); // 150px out of an 800px-wide container - a modest, partial-width drag.
+    const swept = Math.abs(map.getCamera().lon);
+    // A drag this small should turn the globe by a fraction of what's visible at this zoom, not
+    // spin it repeatedly past the whole view - the old formula swept roughly 12 visible widths for
+    // a full-window drag at this altitude, which this bounds well under one.
+    expect(swept).toBeLessThan(30);
+  });
 });
 
 describe('drawing', () => {

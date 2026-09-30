@@ -24,7 +24,7 @@ export const DEFAULT_THEME: Theme = {
 export const DEFAULT_CONFIG: GlobeConfig = {
   mode: 'auto',
   camera: { lat: 20, lon: 0, altitude: 2.5, tilt: 0, bearing: 0 },
-  zoom: { min: 1.15, max: 8 },
+  zoom: { min: 1.15, max: 8, speed: 1.07 },
   interactive: true,
   autoRotate: { enabled: false, speed: 3, pauseOnInteract: true, resumeAfter: 4000 },
   graticule: { enabled: false, step: 15, width: 1 },

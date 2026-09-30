@@ -21,8 +21,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 const ENTRY = join(ROOT, 'src', 'index.ts');
 
-/** The single file build must stay under these sizes, checked on every build and in CI. */
-const BUDGET = { minified: 110 * 1024, gzipped: 45 * 1024 };
+/**
+ * The single file build must stay under these sizes, checked on every build and in CI.
+ *
+ * Raised from 110KB/45KB when the embedded world data moved from Natural Earth 1:110m to 1:50m
+ * (see scripts/sync-world.ts) - the actual build sits at roughly 143KB/80KB, so there is headroom
+ * for the JS itself to grow without the data bump alone tripping this.
+ */
+const BUDGET = { minified: 155 * 1024, gzipped: 90 * 1024 };
 
 /**
  * Browsers the output is compiled for.

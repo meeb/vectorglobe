@@ -1,9 +1,9 @@
 /**
  * Sync the embedded world border data.
  *
- *   node scripts/sync-world.ts [--simplify 35] [--check] [--force]
+ *   node scripts/sync-world.ts [--simplify 20] [--check] [--force]
  *
- * Downloads a pinned release of the Natural Earth 1:110m country borders, simplifies it with
+ * Downloads a pinned release of the Natural Earth 1:50m country borders, simplifies it with
  * mapshaper, builds a shared-arc topology and re-encodes the result into `src/data/world.generated.ts`.
  *
  * Keeping the topology matters: a border between two countries exists as a single arc, so it is
@@ -24,7 +24,7 @@ const OUTPUT_FILE = join(ROOT, 'src', 'data', 'world.generated.ts');
 
 /** Pinned so a sync is reproducible; bump deliberately when Natural Earth publishes a new release. */
 const SOURCE_TAG = 'v5.1.2';
-const SOURCE_FILE = 'ne_110m_admin_0_countries.geojson';
+const SOURCE_FILE = 'ne_50m_admin_0_countries.geojson';
 const SOURCE_URL = `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/${SOURCE_TAG}/geojson/${SOURCE_FILE}`;
 
 interface Args {
@@ -53,7 +53,7 @@ interface Topology {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { simplify: 35, check: false, force: false };
+  const args: Args = { simplify: 20, check: false, force: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--simplify') {
       args.simplify = Number(argv[++i]);
@@ -99,6 +99,18 @@ function isoCode(properties: Record<string, unknown>, primary: string, fallback:
 async function simplify(source: Buffer, percentage: number): Promise<Topology> {
   const command = [
     '-i input.geojson',
+    // Antarctica's source ring closes itself by marching through dozens of points at
+    // lat=-89.998926 across almost every longitude - a deliberate "polar cap" closure in Natural
+    // Earth's own data, not a defect. Projected onto a sphere those points collapse onto (or right
+    // next to) the pole itself, so the last real coastal point before the cap and the first real
+    // coastal point after it end up joined by what looks like two spikes through the globe's centre.
+    // (A `-clip` step just short of the pole was tried here and rejected: clipping a polygon against
+    // a bounding box makes mapshaper trace the box's own edge to re-close the shape, which walks up
+    // the antimeridian at constant longitude across the *same* latitude range as real coastline -
+    // trading one artefact for a harder-to-filter one. The cap points are left in the data and
+    // filtered out by latitude instead, at render time in `buildBorderPaths()` - see
+    // POLE_EXCLUSION_LAT in landmesh.ts - where they are reliably identifiable because they sit
+    // within a fraction of a degree of the pole, unlike any real coastline point.)
     '-filter-fields NAME,ISO_A2,ISO_A3,ISO_A2_EH,ISO_A3_EH,CONTINENT',
     `-simplify visvalingam percentage=${percentage}% keep-shapes`,
     '-clean',

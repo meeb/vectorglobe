@@ -22,14 +22,36 @@ describe('camera state', () => {
     expect(camera.lat).toBe(90);
   });
 
-  it('zooms multiplicatively and respects the limits', () => {
+  it('zooms by scaling the height above the surface, and respects the limits', () => {
     const camera = new Camera(start, limits);
+    // Altitude 2.5 is 1.5 above the surface; doubling that height lands at altitude 4, not 5 -
+    // multiplying the raw altitude directly was the bug this guards against (see zoomBy's docs).
     camera.zoomBy(2);
-    expect(camera.altitude).toBe(5);
+    expect(camera.altitude).toBe(4);
     camera.zoomBy(100);
     expect(camera.altitude).toBe(limits.max);
     camera.zoomBy(0.0001);
     expect(camera.altitude).toBe(limits.min);
+  });
+
+  it('keeps one zoom step the same relative size close to the surface as far from it', () => {
+    // This is the actual bug report: scaling the raw altitude made the same wheel notch cut a much
+    // bigger fraction off your height the closer you already were to the surface. Scaling the
+    // height itself keeps the fraction constant at any distance.
+    const factor = 0.85;
+    const far = new Camera({ ...start, altitude: 6 }, limits);
+    const near = new Camera({ ...start, altitude: 1.2 }, limits);
+    far.zoomBy(factor);
+    near.zoomBy(factor);
+    expect((far.altitude - 1) / 5).toBeCloseTo(factor, 10);
+    expect((near.altitude - 1) / 0.2).toBeCloseTo(factor, 10);
+  });
+
+  it('can still zoom back out after a step lands exactly on the surface', () => {
+    const camera = new Camera({ ...start, altitude: 1.15 }, { min: 1, max: 8 });
+    camera.zoomBy(0); // height collapses to 0 (clamped away from it, not left exactly there)
+    camera.zoomBy(2);
+    expect(camera.altitude).toBeGreaterThan(1);
   });
 
   it('pulls the altitude back into range when the limits change', () => {

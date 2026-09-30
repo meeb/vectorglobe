@@ -7,7 +7,7 @@ nothing fetched at runtime: the country borders are compiled into the bundle.
   unavailable.
 - **Built for route maps.** Labelled dots and two kinds of connection between them: a great circle arc
   generated from two dot ids, or an explicit path you supply in 3D.
-- **Small.** About 82KB minified, 39KB gzipped, world data included.
+- **Small.** About 143KB minified, 80KB gzipped, world data included.
 - **No runtime dependencies.** The renderer, the maths and the geometry are all in this package.
 
 ```html
@@ -135,7 +135,7 @@ const map = vectorGlobe(container, {
   config: {
     mode: 'auto',                 // 'auto' | '3d' | '2d'
     camera: { lat: 20, lon: 0, altitude: 2.5, tilt: 0, bearing: 0 },
-    zoom: { min: 1.15, max: 8 },  // altitude limits, in globe radii from the centre
+    zoom: { min: 1.15, max: 8, speed: 1.07 },  // altitude limits and wheel/pinch/key sensitivity
     interactive: true,
     autoRotate: { enabled: false, speed: 3, pauseOnInteract: true, resumeAfter: 4000 },
     graticule: { enabled: false, step: 15, width: 1 },
@@ -158,6 +158,12 @@ const map = vectorGlobe(container, {
 and larger numbers are further away. `tilt` pitches the view away from looking straight down, up to 80
 degrees, and `bearing` spins it around the local vertical. In 2D, `lat` and `lon` are the centre of the
 view, `altitude` is the zoom, and `tilt` and `bearing` are ignored.
+
+`zoom.speed` is how much one wheel notch, pinch-doubling or +/- keypress changes your height above
+the surface (`altitude - 1`), not the raw altitude - scaling the raw value instead would make the
+same notch feel far more sensitive the closer you already are to the surface, since ground level is
+altitude `1`. `1.07` is 7% per notch, which compounds over a scroll gesture (five notches is about a
+40% change, ten is about 2x); turn it down for gentler zooming.
 
 Only the fields you pass are overridden; everything nested is merged, so
 `setConfig({ graticule: { enabled: true } })` leaves `graticule.step` alone.
@@ -211,23 +217,25 @@ when the GPU drops the WebGL context. Force either renderer with `config.mode`.
 
 ## Map data
 
-Borders come from [Natural Earth](https://www.naturalearthdata.com/) 1:110m admin 0 countries, via the
+Borders come from [Natural Earth](https://www.naturalearthdata.com/) 1:50m admin 0 countries, via the
 [natural-earth-vector](https://github.com/nvkelso/natural-earth-vector) repository at a pinned release.
 The sync pipeline simplifies the geometry, builds a topology so a border shared by two countries is
 stored once, quantises the coordinates onto a 16 bit grid and encodes the result as delta varints. That
-is what turns 839KB of GeoJSON into roughly 20KB of embedded data.
+turns 3MB of GeoJSON into about 75KB of embedded data - individually recognisable islands and coastlines
+rather than the faceted 1:110m tier this started on, at roughly a 4x larger data payload.
 
 Natural Earth is in the public domain. `VectorGlobe.worldData` carries the provenance of the embedded
 copy, including the source release and its checksum, for attribution.
 
-The resolution is deliberately low. It is chosen for plotting routes at global scale rather than for
-cartographic accuracy, and coastlines will not hold up at city level zoom.
+The resolution is still tuned for plotting routes at global to regional scale, not for surveying; it
+will not hold up at street level zoom, and the deliberately low default `SIMPLIFY` trades some of what
+1:50m offers back for bundle size.
 
 To refresh it, or to trade size against detail:
 
 ```sh
-make sync                 # re-download and re-encode at the default 35% simplification
-make sync SIMPLIFY=60     # keep more vertices, at the cost of a larger bundle
+make sync                 # re-download and re-encode at the default 20% simplification
+make sync SIMPLIFY=50     # keep more vertices, at the cost of a larger bundle
 ```
 
 ## Development

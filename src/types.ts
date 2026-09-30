@@ -68,8 +68,18 @@ export interface GlobeConfig {
   mode: ModePreference;
   /** Starting camera placement. */
   camera: CameraOptions;
-  /** Altitude limits for zooming, in globe radii from the centre. */
-  zoom: { min: number; max: number };
+  zoom: {
+    /** Altitude limits for zooming, in globe radii from the centre. */
+    min: number;
+    max: number;
+    /**
+     * How much one wheel notch, keypress or pinch-doubling changes the height above the surface,
+     * as a multiplier - 1.07 means 7% per notch. Smaller is gentler. This compounds over a
+     * gesture: five notches at the default is roughly a 40% change, ten roughly 2x, so small
+     * adjustments here go a long way.
+     */
+    speed: number;
+  };
   /** Whether pointer, touch and keyboard interaction is enabled at all. */
   interactive: boolean;
   /** Idle rotation. */

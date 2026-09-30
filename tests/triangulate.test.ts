@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getWorld, ringCoordinates } from '../src/data/world.ts';
-import { buildLandMesh } from '../src/geometry/landmesh.ts';
+import { getWorld, ringCoordinates, type World } from '../src/data/world.ts';
+import { buildBorderPaths, buildLandMesh } from '../src/geometry/landmesh.ts';
 import { triangulatePolygon } from '../src/geometry/triangulate.ts';
+import { vec3ToLonLat } from '../src/math/geo.ts';
 
 /** Area of a ring by the shoelace formula, ignoring winding. */
 function ringArea(ring: ArrayLike<number>): number {
@@ -134,5 +135,93 @@ describe('land mesh', () => {
     }
     // A chord this long sags below the surface by well under a kilometre.
     expect(longest).toBeLessThan(0.12);
+  });
+});
+
+/** Build a minimal World whose only arc is the given lon/lat points, for testing in isolation. */
+function worldFromArc(points: [number, number][]): World {
+  const coords = new Float32Array(points.length * 2);
+  points.forEach(([lon, lat], i) => {
+    coords[i * 2] = lon;
+    coords[i * 2 + 1] = lat;
+  });
+  return {
+    arcs: { coords, offsets: new Uint32Array([0, points.length]) },
+    shapes: [],
+    countries: [],
+    arcUse: new Uint8Array([1]),
+    meta: getWorld().meta,
+  };
+}
+
+describe('border and coastline paths', () => {
+  it('draws an ordinary arc as a single unbroken path', () => {
+    const world = worldFromArc([
+      [10, -10],
+      [12, -12],
+      [14, -11],
+    ]);
+    const { coastlines } = buildBorderPaths(world, 1);
+    expect(coastlines.length).toBe(1);
+  });
+
+  it('does not draw a line through a Antarctica-style polar ring closure', () => {
+    // Shaped like the real data: real coastline, a sweep around the pole at ~constant latitude,
+    // then a climb back up to real coastline at a constant, ~antimeridian longitude - see
+    // isArtificialClosurePoint in landmesh.ts for why both parts need their own rule to catch. The
+    // exact point where real coastline meets the antimeridian is itself indistinguishable from the
+    // closure and is trimmed along with it (as it is in the real data), so a couple of ordinary
+    // points are included either side of that boundary for the path to still have something to draw.
+    const world = worldFromArc([
+      [165, -82],
+      [170, -83],
+      [180, -84.35], // last real coastal point - sits exactly on the antimeridian, trimmed too
+      [180, -89.99], // sweep starts
+      [90, -89.99],
+      [0, -89.99],
+      [-90, -89.99],
+      [-180, -89.99], // sweep ends, back at the antimeridian
+      [-180, -87], // climbing back up at constant longitude
+      [-180, -84.35], // first point back - also on the antimeridian, also trimmed
+      [-170, -84.5], // real coastline resumes
+      [-165, -84],
+      [-160, -83],
+    ]);
+    const { coastlines } = buildBorderPaths(world, 1);
+
+    // The closure breaks the arc into two real pieces either side of the gap, not one path that
+    // cuts across it and not zero paths that lose the real coastline entirely.
+    expect(coastlines.length).toBe(2);
+    for (const path of coastlines) {
+      for (let i = 0; i < path.length; i += 3) {
+        const [, lat] = vec3ToLonLat([path[i], path[i + 1], path[i + 2]]);
+        // Every remaining point is real coastline, nowhere near the pole or the closure.
+        expect(lat).toBeGreaterThan(-86);
+      }
+    }
+  });
+
+  it('keeps every point of an ordinary long meridian-following border', () => {
+    // A real border can legitimately run along a meridian for a couple of degrees; only a run at
+    // extreme southern latitude on the antimeridian specifically is treated as artificial.
+    const world = worldFromArc([
+      [30, 40],
+      [30, 42],
+      [30, 44],
+    ]);
+    const { coastlines } = buildBorderPaths(world, 1);
+    expect(coastlines.length).toBe(1);
+  });
+
+  it('never puts a real-world coastline or border point near a pole', () => {
+    const world = getWorld();
+    const { borders, coastlines } = buildBorderPaths(world, 1);
+    for (const path of [...borders, ...coastlines]) {
+      for (let i = 0; i < path.length; i += 3) {
+        const [, lat] = vec3ToLonLat([path[i], path[i + 1], path[i + 2]]);
+        // Antarctica's real coastline reaches into the mid -80s; nothing genuine gets much closer.
+        expect(Math.abs(lat)).toBeLessThan(87);
+      }
+    }
   });
 });

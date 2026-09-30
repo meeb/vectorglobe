@@ -6,7 +6,7 @@ npm := npm
 node := node
 
 # Simplification percentage retained by mapshaper during `make sync`.
-SIMPLIFY ?= 35
+SIMPLIFY ?= 20
 # Port used by `make dev` to serve the examples directory.
 PORT ?= 8080
 

@@ -164,6 +164,32 @@ function subdivisions(ax: number, ay: number, bx: number, by: number): number {
  * once. Arcs used by a single country are coastlines and are returned separately so the two can be
  * themed differently.
  */
+/**
+ * A point this close to a pole is treated as part of an artificial ring closure, not real
+ * coastline, and is left out of border and coastline strokes. See {@link isArtificialClosurePoint}.
+ */
+const POLE_EXCLUSION_LAT = 89;
+
+/**
+ * Antarctica's own source ring has to close itself somewhere there is no real coastline data. It
+ * does this in two parts, both present in Natural Earth's raw data, not introduced by simplification:
+ * a sweep spanning every longitude at ~-89.9989 latitude (closing the gap around the pole itself),
+ * followed by a short climb back up to real coastline at a *constant* longitude of exactly +/-180.
+ *
+ * The sweep is easy to catch by latitude alone. The climb is not: it passes through the same
+ * latitudes (roughly -84 to -89) as ordinary Antarctic coastline elsewhere, so latitude by itself
+ * would either miss it or exclude real coastline too. What sets it apart is running along the
+ * antimeridian at a near-exact constant longitude for several degrees of latitude - something no
+ * real coastline anywhere in the world does. Together these two rules catch the whole closure and
+ * nothing else; drawn as a stroke it reads as a spurious line from the coast to the centre of the
+ * globe and back. The land fill is unaffected - it needs the closing edge to have a complete polygon
+ * to triangulate, and correctly shows no seam there - only the line renderer needs to skip it.
+ */
+function isArtificialClosurePoint(lon: number, lat: number): boolean {
+  const onAntimeridian = Math.abs(Math.abs(lon) - 180) < 0.5;
+  return Math.abs(lat) > POLE_EXCLUSION_LAT || (onAntimeridian && lat < -83);
+}
+
 export function buildBorderPaths(
   world: World,
   radius: number,
@@ -180,36 +206,61 @@ export function buildBorderPaths(
       continue;
     }
 
+    const target = world.arcUse[index] > 1 ? borders : coastlines;
+
     // Simplification leaves some very long straight segments, such as the ruled borders across the
     // Sahara. Drawn as a single chord they would pass under the surface, so they are walked along
-    // the sphere instead.
-    const points: number[] = [];
+    // the sphere instead. Points collect into `points`; a segment that dips near a pole ends the
+    // current run instead of being added, so one arc can produce more than one path.
+    let points: number[] = [];
+
+    const flush = (): void => {
+      if (points.length < 4) {
+        points = [];
+        return;
+      }
+      const path = new Float32Array((points.length / 2) * 3);
+      for (let i = 0; i < points.length / 2; i++) {
+        const position = lonLatToVec3(points[i * 2], points[i * 2 + 1], radius);
+        path[i * 3] = position[0];
+        path[i * 3 + 1] = position[1];
+        path[i * 3 + 2] = position[2];
+      }
+      target.push(path);
+      points = [];
+    };
+
     for (let i = 0; i < count - 1; i++) {
       const lon = world.arcs.coords[(start + i) * 2];
       const lat = world.arcs.coords[(start + i) * 2 + 1];
       const nextLon = world.arcs.coords[(start + i + 1) * 2];
       const nextLat = world.arcs.coords[(start + i + 1) * 2 + 1];
+
+      if (isArtificialClosurePoint(lon, lat) || isArtificialClosurePoint(nextLon, nextLat)) {
+        // The segment itself is excluded, but if its start point is real, it is the last point of
+        // the run ending here and needs to be closed off - otherwise it would never be pushed at
+        // all, since a point is normally only added as *some* segment's start, and this is the one
+        // segment it would have been the start of.
+        if (!isArtificialClosurePoint(lon, lat)) {
+          points.push(lon, lat);
+        }
+        flush();
+        continue;
+      }
+
       const steps = subdivisions(lon, lat, nextLon, nextLat);
       for (let step = 0; step < steps; step++) {
         const t = step / steps;
         points.push(lon + (nextLon - lon) * t, lat + (nextLat - lat) * t);
       }
     }
-    points.push(world.arcs.coords[(end - 1) * 2], world.arcs.coords[(end - 1) * 2 + 1]);
 
-    const path = new Float32Array((points.length / 2) * 3);
-    for (let i = 0; i < points.length / 2; i++) {
-      const position = lonLatToVec3(points[i * 2], points[i * 2 + 1], radius);
-      path[i * 3] = position[0];
-      path[i * 3 + 1] = position[1];
-      path[i * 3 + 2] = position[2];
+    const lastLon = world.arcs.coords[(end - 1) * 2];
+    const lastLat = world.arcs.coords[(end - 1) * 2 + 1];
+    if (!isArtificialClosurePoint(lastLon, lastLat)) {
+      points.push(lastLon, lastLat);
     }
-
-    if (world.arcUse[index] > 1) {
-      borders.push(path);
-    } else {
-      coastlines.push(path);
-    }
+    flush();
   }
 
   return { borders, coastlines };

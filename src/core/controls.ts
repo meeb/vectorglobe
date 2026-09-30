@@ -36,8 +36,8 @@ const CLICK_SLOP = 4;
 /** Degrees of rotation applied per key press. */
 const KEY_STEP = 6;
 
-/** Zoom applied per wheel notch or key press. */
-const ZOOM_STEP = 1.15;
+/** A +/- keypress zooms by this many wheel notches worth of `zoomSpeed`, applied at once. */
+const KEY_ZOOM_NOTCHES = 4;
 
 interface ActivePointer {
   x: number;
@@ -48,6 +48,7 @@ export class Controls {
   private element: HTMLElement;
   private delegate: ControlsDelegate;
   private enabled: boolean;
+  private zoomSpeed: number;
 
   private pointers = new Map<number, ActivePointer>();
   private dragging = false;
@@ -59,11 +60,21 @@ export class Controls {
 
   private readonly listeners: Array<() => void> = [];
 
-  constructor(element: HTMLElement, delegate: ControlsDelegate, enabled: boolean) {
+  constructor(
+    element: HTMLElement,
+    delegate: ControlsDelegate,
+    enabled: boolean,
+    zoomSpeed: number,
+  ) {
     this.element = element;
     this.delegate = delegate;
     this.enabled = enabled;
+    this.zoomSpeed = zoomSpeed;
     this.attach();
+  }
+
+  setZoomSpeed(zoomSpeed: number): void {
+    this.zoomSpeed = zoomSpeed;
   }
 
   setEnabled(enabled: boolean): void {
@@ -214,7 +225,7 @@ export class Controls {
     // deltaMode 1 is lines and 2 is pages; normalise both to something close to a pixel scroll.
     const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
     const amount = (event.deltaY * scale) / 100;
-    this.delegate.zoom(ZOOM_STEP ** amount);
+    this.delegate.zoom(this.zoomSpeed ** amount);
     this.delegate.interact();
   }
 
@@ -248,11 +259,13 @@ export class Controls {
         break;
       case '+':
       case '=':
-        this.delegate.zoom(1 / ZOOM_STEP);
+        // A single keypress is one deliberate action, not a continuous gesture like the wheel, so
+        // it is worth several wheel notches rather than the bare per-notch speed.
+        this.delegate.zoom(1 / this.zoomSpeed ** KEY_ZOOM_NOTCHES);
         break;
       case '-':
       case '_':
-        this.delegate.zoom(ZOOM_STEP);
+        this.delegate.zoom(this.zoomSpeed ** KEY_ZOOM_NOTCHES);
         break;
       default:
         handled = false;

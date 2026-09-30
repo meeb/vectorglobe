@@ -21,6 +21,14 @@ const DEG_TO_RAD = Math.PI / 180;
 /** Largest pitch away from straight down. Beyond this the horizon fills the view and nothing reads. */
 export const MAX_TILT = 80;
 
+/**
+ * Floor used in place of the true height above the surface when scaling a zoom step, so a step
+ * that lands exactly on the surface (height 0) can still zoom back out afterwards - multiplying
+ * zero by any factor leaves it at zero. `zoom.min` defaults well clear of this, so it only matters
+ * for a configuration that pushes the minimum altitude close to 1.
+ */
+const MIN_ZOOM_HEIGHT = 1e-4;
+
 interface Animation {
   from: CameraOptions;
   to: CameraOptions;
@@ -127,9 +135,20 @@ export class Camera {
     this.animation = null;
   }
 
-  /** Multiply the altitude, so zooming feels the same at every distance. */
+  /**
+   * Multiply the height above the surface, so zooming feels the same at every distance.
+   *
+   * `altitude` is measured from the globe's centre, so it is 1 at the surface itself - multiplying
+   * *that* directly, as this used to, scales the actual height above the surface (`altitude - 1`)
+   * far more aggressively than the factor suggests the closer that height gets to zero, which is
+   * exactly backwards from what a zoom control should feel like. A wheel notch that trims a mild
+   * ~15% off your height when far out was cutting well over 100% off it near the minimum zoom,
+   * which is what made scrolling feel like it kept lurching once zoomed in close. Scaling the
+   * height itself instead keeps one notch worth the same relative step at any distance.
+   */
   zoomBy(factor: number): void {
-    this.altitude = clamp(this.altitude * factor, this.limits.min, this.limits.max);
+    const height = Math.max(this.altitude - 1, MIN_ZOOM_HEIGHT);
+    this.altitude = clamp(1 + height * factor, this.limits.min, this.limits.max);
     this.animation = null;
   }
 

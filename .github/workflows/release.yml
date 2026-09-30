@@ -70,7 +70,16 @@ jobs:
 
       # Documentation only, and deliberately after the npm publish above: if this step fails the
       # package is still published, and the release record can always be created by hand afterwards.
+      #
+      # Idempotent on purpose: if a Release for this tag already exists - most likely because it was
+      # created by hand in the GitHub UI, which is what created the tag that triggered this run in the
+      # first place - leave it alone instead of failing on the resulting 422.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "a release for $GITHUB_REF_NAME already exists, leaving it as is"
+          else
+            gh release create "$GITHUB_REF_NAME" --generate-notes
+          fi

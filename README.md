@@ -255,15 +255,33 @@ Publishing to npm runs through [`.github/workflows/release.yml`](.github/workflo
 uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/): GitHub Actions authenticates
 to npm via OIDC, so there is no `NPM_TOKEN` secret sitting in the repo. It fires on every `vX.Y.Z` tag
 push, checks the tag against `package.json`, runs the full gate (lint, typecheck, test, build, size
-budget), publishes, then records the release on GitHub - all inside the workflow, nothing to install
-or click locally.
+budget), then publishes. There are two ways to trigger it, and both are safe to use interchangeably.
+
+**With hand-written release notes** (the usual way): bump the version without creating a tag, then
+draft the GitHub Release yourself, since that's what actually creates the tag and triggers the
+workflow.
 
 ```sh
-npm version minor              # bump package.json and package-lock.json, commit, tag v0.2.0
+npm version minor --no-git-tag-version   # bump package.json and package-lock.json only
+git add -A && git commit -m "v0.4.0"
+git push
+```
+
+Then **Releases → Draft a new release → Choose a tag → type `v0.4.0`** (pick *"Create new tag on
+publish"*, targeting `main`) **→ write the notes → Publish release**. Publishing it creates the tag,
+which triggers the workflow. The workflow's own release-creation step notices a release already exists
+for that tag and leaves your notes alone.
+
+**Without notes, from the terminal** (quicker, notes are auto-generated from commits):
+
+```sh
+npm version minor              # bump, commit, tag, all at once
 git push --follow-tags         # pushing the tag is what triggers the workflow
 ```
 
-That's the entire release. Watch it run under the repo's Actions tab.
+Either way, publishing to npm and creating the GitHub Release both happen inside the workflow - nothing
+to install locally, and the version bump is the only thing you're responsible for getting right before
+you tag or publish a release.
 
 ### One-time setup
 

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vectorglobe demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        background: #05080d;
+        color: #cdd7e1;
+        font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      #map {
+        position: absolute;
+        inset: 0;
+      }
+      .panel {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid #1d2733;
+        border-radius: 6px;
+        background: rgba(8, 13, 20, 0.82);
+        backdrop-filter: blur(4px);
+      }
+      .panel h1 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .panel label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        user-select: none;
+      }
+      .panel button {
+        padding: 4px 8px;
+        border: 1px solid #2a3846;
+        border-radius: 4px;
+        background: #121b25;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      .panel button:hover {
+        background: #1a2634;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .status {
+        position: absolute;
+        bottom: 12px;
+        left: 12px;
+        z-index: 10;
+        padding: 6px 10px;
+        border-radius: 4px;
+        background: rgba(8, 13, 20, 0.82);
+        font-variant-numeric: tabular-nums;
+      }
+      .muted {
+        color: #7a8b9c;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <div class="panel">
+      <h1>vectorglobe</h1>
+      <div class="row">
+        <button type="button" id="mode">Switch to 2D</button>
+        <button type="button" id="fit">Fit routes</button>
+        <button type="button" id="tokyo">Fly to NRT</button>
+      </div>
+      <label><input type="checkbox" id="spin" /> Auto rotate</label>
+      <label><input type="checkbox" id="grid" /> Graticule</label>
+      <label><input type="checkbox" id="glow" checked /> Atmosphere</label>
+      <label><input type="checkbox" id="labels" checked /> Labels</label>
+      <div class="row">
+        <button type="button" id="dark">Dark</button>
+        <button type="button" id="light">Light</button>
+        <button type="button" id="mono">Mono</button>
+      </div>
+    </div>
+
+    <div class="status">
+      <span id="status">loading</span>
+      <span class="muted" id="hover"></span>
+    </div>
+
+    <script src="airports.js"></script>
+    <script src="vectorglobe.js"></script>
+    <script>
+      const map = VectorGlobe(document.getElementById('map'), {
+        config: {
+          camera: { lat: 25, lon: 10, altitude: 2.6, tilt: 0 },
+          graticule: { enabled: false },
+        },
+        points: window.DEMO_AIRPORTS,
+        routes: [...window.DEMO_ROUTES, window.DEMO_TRACK],
+      });
+
+      const status = document.getElementById('status');
+      const hover = document.getElementById('hover');
+
+      const describe = () => {
+        const camera = map.getCamera();
+        status.textContent =
+          `${map.mode} · lat ${camera.lat.toFixed(1)} lon ${camera.lon.toFixed(1)} ` +
+          `alt ${camera.altitude.toFixed(2)} tilt ${camera.tilt.toFixed(0)}`;
+      };
+
+      map.on('ready', (event) => {
+        console.log('vectorglobe ready in', event.mode, 'mode', VectorGlobe.worldData);
+        describe();
+      });
+      map.on('camerachange', describe);
+      map.on('modechange', (event) => {
+        document.getElementById('mode').textContent =
+          event.mode === '3d' ? 'Switch to 2D' : 'Switch to 3D';
+        describe();
+      });
+      map.on('hover', (event) => {
+        if (event.target) {
+          const item = event.target.point ?? event.target.route;
+          hover.textContent = `· ${event.target.kind} ${item.title ?? item.id}`;
+        } else if (event.lat !== null) {
+          hover.textContent = `· ${event.lat.toFixed(1)}, ${event.lon.toFixed(1)}`;
+        } else {
+          hover.textContent = '';
+        }
+      });
+      map.on('click', (event) => {
+        if (event.target && event.target.kind === 'point') {
+          map.flyTo(event.target.id, { duration: 900 });
+        }
+      });
+
+      document.getElementById('mode').onclick = () => {
+        map.setConfig({ mode: map.mode === '3d' ? '2d' : '3d' });
+      };
+      document.getElementById('fit').onclick = () => map.fitPoints();
+      document.getElementById('tokyo').onclick = () => map.flyTo('NRT', { duration: 1200 });
+
+      document.getElementById('spin').onchange = (event) =>
+        map.setConfig({ autoRotate: { enabled: event.target.checked } });
+      document.getElementById('grid').onchange = (event) =>
+        map.setConfig({ graticule: { enabled: event.target.checked } });
+      document.getElementById('glow').onchange = (event) =>
+        map.setConfig({ atmosphere: { enabled: event.target.checked } });
+      document.getElementById('labels').onchange = (event) =>
+        map.setConfig({ labels: { enabled: event.target.checked } });
+
+      document.getElementById('dark').onclick = () => {
+        map.setConfig({ shading: VectorGlobe.DEFAULT_CONFIG.shading, atmosphere: { strength: 1 } });
+        document.body.style.background = '#05080d';
+        map.setTheme(VectorGlobe.DEFAULT_THEME);
+      };
+      document.getElementById('light').onclick = () => {
+        // A pale globe needs far less edge shading, and a brighter page behind it.
+        map.setConfig({ shading: 0.12, atmosphere: { strength: 0.5 } });
+        document.body.style.background = '#c8d6e5';
+        map.setTheme({
+          water: '#dbe6ef',
+          land: '#f6f8fa',
+          border: '#b3c2ce',
+          coastline: '#93a5b4',
+          atmosphere: '#8fb7e8',
+          point: '#d2691e',
+          pointLabel: '#1d2733',
+          pointLabelBackground: 'rgba(255, 255, 255, 0.86)',
+          route: '#2d6cdf',
+        });
+      };
+      document.getElementById('mono').onclick = () =>
+        map.setTheme({
+          water: '#0a0a0a',
+          land: '#1e1e1e',
+          border: '#3a3a3a',
+          coastline: '#4d4d4d',
+          atmosphere: '#666666',
+          point: '#ffffff',
+          route: '#8c8c8c',
+        });
+    </script>
+  </body>
+</html>

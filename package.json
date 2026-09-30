@@ -1,0 +1,70 @@
+{
+  "name": "@meeby/vectorglobe",
+  "version": "0.1.0",
+  "description": "All-in-one fast vector world map rendering for websites. Self-contained 3D globe with a 2D fallback, no tiles, no runtime dependencies.",
+  "keywords": [
+    "map",
+    "globe",
+    "vector",
+    "webgl",
+    "geojson",
+    "flight-routes",
+    "great-circle",
+    "visualization"
+  ],
+  "license": "MIT",
+  "author": "meeb <meeb@meeb.org>",
+  "homepage": "https://github.com/meeb/vectorglobe",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meeb/vectorglobe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/meeb/vectorglobe/issues"
+  },
+  "type": "module",
+  "main": "./dist/vectorglobe.cjs",
+  "module": "./dist/vectorglobe.esm.js",
+  "types": "./dist/types/index.d.ts",
+  "unpkg": "./dist/vectorglobe.min.js",
+  "jsdelivr": "./dist/vectorglobe.min.js",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/vectorglobe.esm.js",
+      "require": "./dist/vectorglobe.cjs",
+      "default": "./dist/vectorglobe.min.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "dev": "node scripts/dev.ts",
+    "sync": "node scripts/sync-world.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
+    "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.0.0",
+    "mapshaper": "^0.7.70",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

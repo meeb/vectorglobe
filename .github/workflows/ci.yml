@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      # Also enforces the bundle size budget, which the build fails on.
+      - name: Build
+        run: npm run build
+
+      - name: Check the packaged file list
+        run: npm pack --dry-run
+
+  data:
+    # The embedded world data is committed, so this only checks it still matches the pipeline that
+    # produced it. It needs the network, so it is kept out of the main job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify the embedded world data is up to date
+        run: make sync-check

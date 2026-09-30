@@ -1,0 +1,64 @@
+name: Release
+
+# Fires when a GitHub Release is published (not on every tag push, and not on a draft) — that keeps
+# publishing an explicit, human action with a changelog attached, rather than a side effect of tagging.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Auto-created on first run with no protection rules. Add required reviewers to it later
+    # (Settings -> Environments -> npm-publish) for a manual approval gate before anything publishes.
+    # The name must match the trusted publisher configured on the npmjs.com package settings page.
+    environment: npm-publish
+    permissions:
+      contents: read
+      # This is what lets npm exchange a short-lived OIDC token for publish rights - no npm token
+      # secret stored in the repo at all, nothing to leak or rotate.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1+; the npm bundled with Node 22 is older than that.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - run: npm ci
+
+      # Catches "tagged the wrong commit" or "forgot to bump the version" before anything is published.
+      - name: Verify the release tag matches package.json
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$RELEASE_TAG" != "$expected" ]; then
+            echo "::error::Release tag $RELEASE_TAG does not match package.json version ($expected)"
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      # Also enforces the bundle size budget - a release that blows the budget fails here.
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public

@@ -55,6 +55,10 @@ const CSS = `
   font-size: 10px;
   opacity: 0.75;
 }
+.vg-route-label {
+  background: var(--vg-route-label-background, rgba(8, 16, 26, 0.72));
+  color: var(--vg-route-label, #e8eef4);
+}
 `;
 
 /** Add the stylesheet to the document if it is not already there. */

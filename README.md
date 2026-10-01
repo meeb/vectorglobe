@@ -79,12 +79,21 @@ map.addRoute({
   ],
   curve: 'smooth',              // or 'linear' for straight hops between coordinates
   color: '#8bf7a0',
+  label: 'BA178',                // short tag, drawn at the midpoint of the curve
+  title: 'Heathrow to Kennedy',  // longer name, drawn under the tag - same layout as a point's
 });
 ```
 
 Altitude is in kilometres above sea level and is ignored by the 2D renderer, which draws the ground
 track. Use `curve: 'linear'` when your coordinates are already dense enough that you want them joined
 rather than smoothed.
+
+A route's `label` and `title` sit at the midpoint of its curve, laid out the same way as a point's tag
+and title - the midpoint of the great circle for a generated route, or of the sampled curve for an
+explicit path. Set `labelVisible: false` to keep them set but hidden, the same as a point's. They're
+themed by `theme.routeLabel` and `theme.routeLabelBackground` rather than the point label colours, so
+the two kinds of label can look different if you want them to - set both pairs to the same colours to
+make them match instead.
 
 Everything is keyed by id, so anything can be changed or removed later:
 
@@ -113,12 +122,15 @@ const map = vectorGlobe(container, {
     pointLabel: '#e8eef4',
     pointLabelBackground: 'rgba(8, 16, 26, 0.72)',
     route: '#4fc3f7',
+    routeLabel: '#e8eef4',
+    routeLabelBackground: 'rgba(8, 16, 26, 0.72)',
   },
 });
 ```
 
 Labels are ordinary DOM elements, so they can also be restyled from your own stylesheet through
-`.vg-label`, `.vg-label-tag` and `.vg-label-title`.
+`.vg-label`, `.vg-label-tag` and `.vg-label-title`; a route's label additionally carries `.vg-route-label`,
+so it can be targeted separately from a point's.
 
 A pale theme usually wants much less edge shading than the dark default, or the globe picks up a dirty
 ring around its edge:
@@ -135,7 +147,8 @@ const map = vectorGlobe(container, {
   config: {
     mode: 'auto',                 // 'auto' | '3d' | '2d'
     camera: { lat: 20, lon: 0, altitude: 2.5, tilt: 0, bearing: 0 },
-    zoom: { min: 1.15, max: 8, speed: 1.07 },  // altitude limits and wheel/pinch/key sensitivity
+    zoom: { min: 1.15, max: 8, speed: 1.07, pinchSensitivity: 2.6 },  // limits and sensitivity
+    fit: { padding: 1.15, minSpan: 5 },  // how closely fitPoints() frames its points
     interactive: true,
     autoRotate: { enabled: false, speed: 3, pauseOnInteract: true, resumeAfter: 4000 },
     graticule: { enabled: false, step: 15, width: 1 },
@@ -159,11 +172,29 @@ and larger numbers are further away. `tilt` pitches the view away from looking s
 degrees, and `bearing` spins it around the local vertical. In 2D, `lat` and `lon` are the centre of the
 view, `altitude` is the zoom, and `tilt` and `bearing` are ignored.
 
-`zoom.speed` is how much one wheel notch, pinch-doubling or +/- keypress changes your height above
-the surface (`altitude - 1`), not the raw altitude - scaling the raw value instead would make the
-same notch feel far more sensitive the closer you already are to the surface, since ground level is
-altitude `1`. `1.07` is 7% per notch, which compounds over a scroll gesture (five notches is about a
-40% change, ten is about 2x); turn it down for gentler zooming.
+`zoom.speed` is how much one wheel notch or +/- keypress changes your height above the surface
+(`altitude - 1`), not the raw altitude - scaling the raw value instead would make the same notch feel
+far more sensitive the closer you already are to the surface, since ground level is altitude `1`.
+`1.07` is 7% per notch, which compounds over a scroll gesture (five notches is about a 40% change, ten
+is about 2x); turn it down for gentler zooming.
+
+`zoom.pinchSensitivity` does the same job for touch: it is the exponent applied to the ratio between a
+pinch gesture's start and end finger distance, since using that ratio directly makes pinch-to-zoom feel
+sluggish - a comfortable two-finger spread only covers a limited physical range next to how far you
+usually want to zoom. `2.6` means doubling your finger spread cuts your height to roughly a sixth; raise it
+for a touchscreen that still feels like it needs too much movement, lower it if a small pinch moves too
+far.
+
+`fit.padding` and `fit.minSpan` control how closely `fitPoints()` frames what it's given. `padding` is
+how much further back than a tight fit the camera pulls, so the points sit inside the view rather than
+touching its edge - `1.15` leaves about 15% to spare; lower it for a tighter frame, which matters most
+on a map embedded small, where a short route should fill most of the view rather than leaving most of
+it as open globe around a couple of dots. `minSpan` is a floor, in degrees, on how far `fitPoints` will
+zoom in - without
+one, two points right on top of each other would zoom in until the rest of the world vanished and all
+geographic context was lost; lower it to let a genuinely short route fill the frame, raise it to always
+keep some surrounding world in view. Both apply independently on each axis, so a route that runs mostly
+east-west is framed against the container's horizontal field of view rather than its vertical one.
 
 Only the fields you pass are overridden; everything nested is merged, so
 `setConfig({ graticule: { enabled: true } })` leaves `graticule.step` alone.
@@ -175,6 +206,7 @@ map.setCamera({ lat: 35.77, lon: 140.39 }, { animate: true, duration: 900 });
 map.flyTo('NRT', { duration: 1200 });     // a point id, or a camera object
 map.fitPoints(['LHR', 'JFK', 'SIN']);     // frame these points, or all of them if omitted
 map.getCamera();                          // { lat, lon, altitude, tilt, bearing }
+map.resetCamera();                        // back to the camera passed in at construction
 ```
 
 Camera animations are skipped for anyone whose system asks for reduced motion.

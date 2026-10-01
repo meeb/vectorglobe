@@ -200,16 +200,25 @@ export class Camera {
   }
 
   /**
-   * Visible half angle of the globe from the current altitude, in degrees.
+   * Distance needed to fit a span of the globe's surface inside a given field of view, in globe radii
+   * from the centre.
    *
-   * Used to work out how much of the world a given altitude shows, and so how far to pull back to fit
-   * a set of points.
+   * Used by `Globe.fitPoints` to work out how far to pull back to frame a set of points: a cap of the
+   * given angular span, viewed from this distance, exactly fills that field of view. `fov` defaults to
+   * the camera's (vertical) field of view; pass the horizontal one instead to fit a span that runs
+   * left-to-right rather than top-to-bottom. `padding` scales the result outward so the points end up
+   * inside the frame with some breathing room rather than exactly touching its edge - see
+   * `GlobeConfig.fit.padding`.
    */
-  static altitudeForSpan(spanDegrees: number, limits: { min: number; max: number }): number {
+  static altitudeForSpan(
+    spanDegrees: number,
+    limits: { min: number; max: number },
+    options: { fov?: number; padding?: number } = {},
+  ): number {
     const half = Math.max(2, Math.min(170, spanDegrees)) / 2;
-    // Distance at which a cap of the given half angle just fills the field of view.
     const angle = half * DEG_TO_RAD;
-    const required = Math.sin(angle) / Math.tan(FIELD_OF_VIEW / 2) + Math.cos(angle);
-    return clamp(required * 1.15, limits.min, limits.max);
+    const required =
+      Math.sin(angle) / Math.tan((options.fov ?? FIELD_OF_VIEW) / 2) + Math.cos(angle);
+    return clamp(required * (options.padding ?? 1.15), limits.min, limits.max);
   }
 }

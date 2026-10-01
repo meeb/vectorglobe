@@ -116,5 +116,24 @@ describe('resolving defaults', () => {
     const resolved = resolveRoute({ id: 'r', from: 'a', to: 'b' }, DEFAULT_THEME, DEFAULT_CONFIG);
     expect(resolved.color).toBe(DEFAULT_THEME.route);
     expect(resolved.width).toBe(DEFAULT_CONFIG.routes.width);
+    expect(resolved.labelVisible).toBe(true);
+  });
+
+  it('lets a route label be turned off explicitly', () => {
+    const resolved = resolveRoute(
+      { id: 'r', from: 'a', to: 'b', label: 'BA178', labelVisible: false },
+      DEFAULT_THEME,
+      DEFAULT_CONFIG,
+    );
+    expect(resolved).toMatchObject({ label: 'BA178', labelVisible: false });
+  });
+
+  it('keeps a route title, the same second label line a point has', () => {
+    const resolved = resolveRoute(
+      { id: 'r', from: 'a', to: 'b', label: 'BA178', title: 'Heathrow to Kennedy' },
+      DEFAULT_THEME,
+      DEFAULT_CONFIG,
+    );
+    expect(resolved).toMatchObject({ label: 'BA178', title: 'Heathrow to Kennedy' });
   });
 });

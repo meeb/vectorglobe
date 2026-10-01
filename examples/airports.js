@@ -23,7 +23,7 @@ window.DEMO_AIRPORTS = [
 
 /** Generated arcs: the map works the great circle out from the two point ids. */
 window.DEMO_ROUTES = [
-  { id: 'LHR-JFK', from: 'LHR', to: 'JFK' },
+  { id: 'LHR-JFK', from: 'LHR', to: 'JFK', label: 'BA178', title: 'Heathrow to Kennedy' },
   { id: 'JFK-LAX', from: 'JFK', to: 'LAX' },
   { id: 'LAX-NRT', from: 'LAX', to: 'NRT' },
   { id: 'NRT-SIN', from: 'NRT', to: 'SIN' },

@@ -142,5 +142,6 @@ export function resolveRoute(spec: RouteSpec, theme: Theme, config: GlobeConfig)
     color: spec.color ?? theme.route,
     width: spec.width ?? config.routes.width,
     opacity: spec.opacity ?? 1,
+    labelVisible: spec.labelVisible ?? true,
   };
 }

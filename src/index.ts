@@ -171,6 +171,10 @@ export function vectorGlobe(
       globe.fitPoints(ids, transition);
       return instance;
     },
+    resetCamera(transition?: CameraTransition) {
+      globe.resetCamera(transition);
+      return instance;
+    },
 
     on<E extends GlobeEventName>(event: E, handler: GlobeEventHandler<E>) {
       globe.on(event, handler);

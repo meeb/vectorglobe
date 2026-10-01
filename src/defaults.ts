@@ -19,12 +19,15 @@ export const DEFAULT_THEME: Theme = {
   pointLabel: '#e8eef4',
   pointLabelBackground: 'rgba(8, 16, 26, 0.72)',
   route: '#4fc3f7',
+  routeLabel: '#e8eef4',
+  routeLabelBackground: 'rgba(8, 16, 26, 0.72)',
 };
 
 export const DEFAULT_CONFIG: GlobeConfig = {
   mode: 'auto',
   camera: { lat: 20, lon: 0, altitude: 2.5, tilt: 0, bearing: 0 },
-  zoom: { min: 1.15, max: 8, speed: 1.07 },
+  zoom: { min: 1.15, max: 8, speed: 1.07, pinchSensitivity: 2.6 },
+  fit: { padding: 1.15, minSpan: 5 },
   interactive: true,
   autoRotate: { enabled: false, speed: 3, pauseOnInteract: true, resumeAfter: 4000 },
   graticule: { enabled: false, step: 15, width: 1 },

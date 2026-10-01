@@ -91,6 +91,7 @@ export class Globe {
   private autoRotateStopped = false;
   private hovered: string | null = null;
   private reducedMotion = false;
+  private readonly initialCamera: CameraOptions;
 
   constructor(container: HTMLElement, options: VectorGlobeOptions = {}) {
     if (!container || typeof container.appendChild !== 'function') {
@@ -112,6 +113,7 @@ export class Globe {
     container.appendChild(this.root);
 
     this.camera = new Camera(this.config.camera, this.config.zoom);
+    this.initialCamera = this.camera.state;
     this.renderer = this.createRenderer(capabilities.webgl);
     this.root.appendChild(this.renderer.canvas);
 
@@ -119,12 +121,10 @@ export class Globe {
     this.root.appendChild(this.labels.element);
 
     this.applyThemeVariables();
-    this.controls = new Controls(
-      this.root,
-      this.controlsDelegate(),
-      this.config.interactive,
-      this.config.zoom.speed,
-    );
+    this.controls = new Controls(this.root, this.controlsDelegate(), this.config.interactive, {
+      speed: this.config.zoom.speed,
+      pinchSensitivity: this.config.zoom.pinchSensitivity,
+    });
     this.observeResize();
     this.measure();
 
@@ -242,7 +242,10 @@ export class Globe {
     this.styleRevision++;
 
     this.camera.setLimits(this.config.zoom);
-    this.controls.setZoomSpeed(this.config.zoom.speed);
+    this.controls.setZoomSensitivity({
+      speed: this.config.zoom.speed,
+      pinchSensitivity: this.config.zoom.pinchSensitivity,
+    });
     this.controls.setEnabled(this.config.interactive);
     if (config.autoRotate?.enabled) {
       // Turning rotation on is a deliberate instruction, so it overrides an earlier interaction
@@ -284,6 +287,10 @@ export class Globe {
     return this.camera.state;
   }
 
+  resetCamera(transition?: CameraTransition): void {
+    this.setCamera(this.initialCamera, { animate: true, ...transition });
+  }
+
   flyTo(target: string | Partial<CameraOptions>, transition?: CameraTransition): void {
     let destination: Partial<CameraOptions>;
     if (typeof target === 'string') {
@@ -307,12 +314,26 @@ export class Globe {
       return;
     }
 
-    const span = Math.max(bounds.spanLat, bounds.spanLon, 5);
+    const { padding, minSpan } = this.config.fit;
+    // Fitted separately against each axis's own field of view, rather than taking the larger of the
+    // two spans and fitting that against the (vertical) field of view alone - a wide container has a
+    // wider horizontal field of view than vertical, so an east-west route in one doesn't need pulling
+    // back as far as the same span would if read as a north-south one.
+    const aspect = this.width / Math.max(1, this.height);
+    const horizontalFov = 2 * Math.atan(aspect * Math.tan(FIELD_OF_VIEW / 2));
+    const vertical = Camera.altitudeForSpan(Math.max(bounds.spanLat, minSpan), this.config.zoom, {
+      padding,
+    });
+    const horizontal = Camera.altitudeForSpan(Math.max(bounds.spanLon, minSpan), this.config.zoom, {
+      fov: horizontalFov,
+      padding,
+    });
+
     this.setCamera(
       {
         lat: bounds.centerLat,
         lon: bounds.centerLon,
-        altitude: Camera.altitudeForSpan(span, this.config.zoom),
+        altitude: Math.max(vertical, horizontal),
       },
       { animate: true, ...transition },
     );
@@ -499,6 +520,8 @@ export class Globe {
     this.root.style.setProperty('--vg-point', this.theme.point);
     this.root.style.setProperty('--vg-label', this.theme.pointLabel);
     this.root.style.setProperty('--vg-label-background', this.theme.pointLabelBackground);
+    this.root.style.setProperty('--vg-route-label', this.theme.routeLabel);
+    this.root.style.setProperty('--vg-route-label-background', this.theme.routeLabelBackground);
   }
 
   private invalidate(): void {
@@ -732,6 +755,7 @@ function cloneConfig(config: GlobeConfig): GlobeConfig {
     ...config,
     camera: { ...config.camera },
     zoom: { ...config.zoom },
+    fit: { ...config.fit },
     autoRotate: { ...config.autoRotate },
     graticule: { ...config.graticule },
     atmosphere: { ...config.atmosphere },

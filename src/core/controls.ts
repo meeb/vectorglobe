@@ -36,7 +36,7 @@ const CLICK_SLOP = 4;
 /** Degrees of rotation applied per key press. */
 const KEY_STEP = 6;
 
-/** A +/- keypress zooms by this many wheel notches worth of `zoomSpeed`, applied at once. */
+/** A +/- keypress zooms by this many wheel notches worth of `zoom.speed`, applied at once. */
 const KEY_ZOOM_NOTCHES = 4;
 
 interface ActivePointer {
@@ -44,11 +44,17 @@ interface ActivePointer {
   y: number;
 }
 
+/** How strongly wheel, keyboard and pinch gestures zoom. See the matching fields on `GlobeConfig`. */
+export interface ZoomSensitivity {
+  speed: number;
+  pinchSensitivity: number;
+}
+
 export class Controls {
   private element: HTMLElement;
   private delegate: ControlsDelegate;
   private enabled: boolean;
-  private zoomSpeed: number;
+  private zoom: ZoomSensitivity;
 
   private pointers = new Map<number, ActivePointer>();
   private dragging = false;
@@ -64,17 +70,17 @@ export class Controls {
     element: HTMLElement,
     delegate: ControlsDelegate,
     enabled: boolean,
-    zoomSpeed: number,
+    zoom: ZoomSensitivity,
   ) {
     this.element = element;
     this.delegate = delegate;
     this.enabled = enabled;
-    this.zoomSpeed = zoomSpeed;
+    this.zoom = zoom;
     this.attach();
   }
 
-  setZoomSpeed(zoomSpeed: number): void {
-    this.zoomSpeed = zoomSpeed;
+  setZoomSensitivity(zoom: ZoomSensitivity): void {
+    this.zoom = zoom;
   }
 
   setEnabled(enabled: boolean): void {
@@ -171,7 +177,10 @@ export class Controls {
     if (this.pointers.size === 2) {
       const distance = this.currentPinchDistance();
       if (this.pinchDistance > 0 && distance > 0) {
-        this.delegate.zoom(this.pinchDistance / distance);
+        // Raised to a power rather than used directly: a direct ratio matches finger movement
+        // 1:1, which reads as sluggish, since a comfortable pinch spans a limited physical range
+        // next to the zoom range people expect to cover in one gesture.
+        this.delegate.zoom((this.pinchDistance / distance) ** this.zoom.pinchSensitivity);
         this.delegate.interact();
       }
       this.pinchDistance = distance;
@@ -225,7 +234,7 @@ export class Controls {
     // deltaMode 1 is lines and 2 is pages; normalise both to something close to a pixel scroll.
     const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
     const amount = (event.deltaY * scale) / 100;
-    this.delegate.zoom(this.zoomSpeed ** amount);
+    this.delegate.zoom(this.zoom.speed ** amount);
     this.delegate.interact();
   }
 
@@ -261,11 +270,11 @@ export class Controls {
       case '=':
         // A single keypress is one deliberate action, not a continuous gesture like the wheel, so
         // it is worth several wheel notches rather than the bare per-notch speed.
-        this.delegate.zoom(1 / this.zoomSpeed ** KEY_ZOOM_NOTCHES);
+        this.delegate.zoom(1 / this.zoom.speed ** KEY_ZOOM_NOTCHES);
         break;
       case '-':
       case '_':
-        this.delegate.zoom(this.zoomSpeed ** KEY_ZOOM_NOTCHES);
+        this.delegate.zoom(this.zoom.speed ** KEY_ZOOM_NOTCHES);
         break;
       default:
         handled = false;

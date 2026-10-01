@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetCapabilityCache } from '../../src/core/capabilities.ts';
+import { DEFAULT_CONFIG } from '../../src/defaults.ts';
 import { vectorGlobe } from '../../src/index.ts';
 import type { VectorGlobeInstance } from '../../src/types.ts';
 
@@ -201,6 +202,62 @@ describe('camera', () => {
     expect(camera.lon).toBeCloseTo(15, 1);
   });
 
+  it('lets fit.padding and fit.minSpan be configured for a tighter frame', () => {
+    const points = [
+      { id: 'a', lat: 0, lon: -0.05 },
+      { id: 'b', lat: 0, lon: 0.05 },
+    ];
+
+    map = vectorGlobe(container, { points });
+    map.fitPoints(undefined, { animate: false });
+    const defaultAltitude = map.getCamera().altitude;
+    map.destroy();
+
+    map = vectorGlobe(container, { points, config: { fit: { padding: 1.02, minSpan: 0.2 } } });
+    map.fitPoints(undefined, { animate: false });
+    const tightAltitude = map.getCamera().altitude;
+
+    // Two points a tenth of a degree apart would be floored by the default minSpan (5 degrees) to
+    // the same frame as two points on opposite sides of a small country - a short route needs a
+    // tighter floor, and a smaller margin, to actually fill a view that is embedded small.
+    expect(tightAltitude).toBeLessThan(defaultAltitude);
+  });
+
+  it('fits each axis against its own field of view, not the larger of the two spans', () => {
+    // The stubbed container is 800x600 - wider than tall, so its horizontal field of view is wider
+    // than its vertical one, and the same angular span needs less pulling back running east-west
+    // (against that wider field) than running north-south (against the narrower one).
+    map = vectorGlobe(container, {
+      points: [
+        { id: 'a', lat: 0, lon: -20 },
+        { id: 'b', lat: 0, lon: 20 },
+      ],
+      config: { fit: { minSpan: 0 } },
+    });
+    map.fitPoints(undefined, { animate: false });
+    const eastWest = map.getCamera().altitude;
+    map.destroy();
+
+    map = vectorGlobe(container, {
+      points: [
+        { id: 'a', lat: -20, lon: 0 },
+        { id: 'b', lat: 20, lon: 0 },
+      ],
+      config: { fit: { minSpan: 0 } },
+    });
+    map.fitPoints(undefined, { animate: false });
+    const northSouth = map.getCamera().altitude;
+
+    expect(eastWest).toBeLessThan(northSouth);
+  });
+
+  it('resets to the camera it was constructed with', () => {
+    map = vectorGlobe(container, { config: { camera: { lat: 40, lon: -70, altitude: 3 } } });
+    map.setCamera({ lat: 12, lon: 34, altitude: 1.5 });
+    map.resetCamera({ animate: false });
+    expect(map.getCamera()).toMatchObject({ lat: 40, lon: -70, altitude: 3 });
+  });
+
   it('emits when the camera changes', () => {
     map = vectorGlobe(container);
     const handler = vi.fn();
@@ -278,6 +335,53 @@ describe('camera', () => {
     // a full-window drag at this altitude, which this bounds well under one.
     expect(swept).toBeLessThan(30);
   });
+
+  it('amplifies pinch zoom by config.zoom.pinchSensitivity', () => {
+    // Two fingers moving from 100px apart to 200px apart - a real, physically comfortable pinch.
+    const pinch = (sensitivity: number): number => {
+      map = vectorGlobe(container, {
+        config: { camera: { altitude: 4 }, zoom: { pinchSensitivity: sensitivity } },
+      });
+      const root = container.querySelector('.vg-root') as HTMLElement;
+      const down = (id: number, x: number) =>
+        root.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            clientX: x,
+            clientY: 300,
+            bubbles: true,
+            pointerId: id,
+          }),
+        );
+      const move = (id: number, x: number) =>
+        root.dispatchEvent(
+          new PointerEvent('pointermove', {
+            clientX: x,
+            clientY: 300,
+            bubbles: true,
+            pointerId: id,
+          }),
+        );
+      down(1, 350);
+      down(2, 450); // 100px apart
+      move(1, 300);
+      move(2, 500); // 200px apart - spreading fingers, i.e. zooming in
+      const height = map.getCamera().altitude - 1;
+      map.destroy();
+      return height;
+    };
+
+    const defaultSensitivity = DEFAULT_CONFIG.zoom.pinchSensitivity;
+    const direct = pinch(1); // sensitivity 1 matches the raw finger-distance ratio exactly
+    const amplified = pinch(defaultSensitivity);
+
+    expect(direct).toBeCloseTo(3 * 0.5, 6); // height halved, matching the 2x finger spread exactly
+    // The same physical pinch should move the height further with a higher sensitivity - spreading
+    // fingers 2x should cut height by more than half, not by the same amount as sensitivity 1.
+    // Compared against the real default rather than a hardcoded copy of it, so this cannot go stale
+    // the way the comment it replaces did the moment that default was last tuned.
+    expect(amplified).toBeLessThan(direct);
+    expect(amplified).toBeCloseTo(3 * 0.5 ** defaultSensitivity, 6);
+  });
 });
 
 describe('drawing', () => {
@@ -299,6 +403,70 @@ describe('drawing', () => {
     expect(canvas.calls).toContain('fill');
     expect(canvas.calls).toContain('stroke');
     expect(canvas.calls).toContain('arc');
+  });
+});
+
+describe('route labels', () => {
+  const path: [number, number][] = [
+    [-10, 0],
+    [10, 0],
+  ];
+
+  it('draws a label at the route midpoint when one is set', async () => {
+    map = vectorGlobe(container, { routes: [{ id: 'r', path, label: 'BA178' }] });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-route-label');
+    expect(label).not.toBeNull();
+    expect(label?.querySelector('.vg-label-tag')?.textContent).toBe('BA178');
+  });
+
+  it('draws no label when neither label nor title is set', async () => {
+    map = vectorGlobe(container, { routes: [{ id: 'r', path }] });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(container.querySelector('.vg-route-label')).toBeNull();
+  });
+
+  it('draws title as a second line under the label, same as a point', async () => {
+    map = vectorGlobe(container, {
+      routes: [{ id: 'r', path, label: 'BA178', title: 'Heathrow to Kennedy' }],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-route-label');
+    expect(label?.querySelector('.vg-label-tag')?.textContent).toBe('BA178');
+    expect(label?.querySelector('.vg-label-title')?.textContent).toBe('Heathrow to Kennedy');
+  });
+
+  it('draws just a title when no label is set, same as a point', async () => {
+    map = vectorGlobe(container, {
+      routes: [{ id: 'r', path, title: 'Heathrow to Kennedy' }],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-route-label');
+    expect(label).not.toBeNull();
+    expect((label?.querySelector('.vg-label-tag') as HTMLElement)?.hidden).toBe(true);
+    expect(label?.querySelector('.vg-label-title')?.textContent).toBe('Heathrow to Kennedy');
+  });
+
+  it('respects labelVisible', async () => {
+    map = vectorGlobe(container, {
+      routes: [{ id: 'r', path, label: 'BA178', labelVisible: false }],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(container.querySelector('.vg-route-label')).toBeNull();
+  });
+
+  it('themes route labels independently of point labels', () => {
+    map = vectorGlobe(container, {
+      theme: { routeLabel: '#ff0000', routeLabelBackground: '#001122' },
+    });
+    const root = container.querySelector('.vg-root') as HTMLElement;
+    expect(root.style.getPropertyValue('--vg-route-label')).toBe('#ff0000');
+    expect(root.style.getPropertyValue('--vg-route-label-background')).toBe('#001122');
   });
 });
 

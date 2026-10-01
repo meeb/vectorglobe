@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `map.resetCamera(transition?)`, which animates back to the camera the map was constructed with -
+  for a "reset view" button, without the caller needing to remember the original `config.camera`
+  (`Globe.resetCamera` in `globe.ts`).
+- `config.fit.padding` and `config.fit.minSpan`, making how closely `fitPoints()` frames its points
+  configurable instead of a fixed 15% margin and a fixed 5 degree minimum zoom - useful for a map
+  embedded small, where a short route framed with the old fixed margin left most of the view as open
+  globe around a couple of dots (`Camera.altitudeForSpan`, `Globe.fitPoints`).
+- `RouteSpec.label` and `RouteSpec.title`, drawn at the midpoint of the route's curve in the same tag-
+  and-title layout as a point's `label`/`title` - a flight number plus the route it covers, say. Themed
+  separately from point labels through the new `theme.routeLabel` and `theme.routeLabelBackground`, and
+  `.vg-route-label` for a CSS override, so route and point labels can be told apart without extra markup
+  (`LabelLayer` in `labels.ts`).
+
+### Fixed
+
+- `fitPoints()` now fits each axis against its own field of view instead of taking the larger of the
+  latitude and longitude span and fitting that against the (vertical) one alone - a wide container has
+  a wider horizontal field of view than vertical, so an east-west route in one did not need pulling
+  back as far as the same span would if it ran north-south (`Globe.fitPoints` in `globe.ts`).
+- Fixed two-finger pinch-to-zoom on touch devices feeling very insensitive. It mapped the ratio
+  between a pinch gesture's start and end finger distance directly onto the zoom change, which
+  matches finger movement 1:1 but reads as sluggish in practice: a comfortable pinch only spans a
+  limited physical range next to how far people expect one gesture to zoom. The ratio is now raised
+  to a configurable exponent (`config.zoom.pinchSensitivity`, default 2.6) before being applied, so
+  the same pinch produces a noticeably larger zoom change. Verified the amplification math and its
+  live configurability end to end through the public API; this one could not be confirmed by feel on
+  real touch hardware the way the mouse-based fixes in 0.5.0 were (`Controls` in `controls.ts`).
+
+## [0.5.0] - 2026-09-30
+
 ### Fixed
 
 - Antarctica no longer draws a spurious border line running from its coast to the globe's centre and
@@ -26,7 +58,7 @@ All notable changes to this project are documented here. The format follows
   the stroke and dot layers above land only face a one-sided test and need much less, so they now
   keep a small, fixed step above land instead of matching its gap from water
   (`LAYER_RADIUS` in `renderer.ts`).
-- Fixed mouse wheel (and pinch, and the +/- keys) zoom feeling over-sensitive, in two parts:
+- Fixed mouse wheel (and the +/- keys) zoom feeling over-sensitive, in two parts:
   - `camera.altitude` is measured from the globe's centre, so it is 1 at the surface itself;
     `zoomBy` was scaling that raw value, which scales the actual height above the surface
     (`altitude - 1`) far more aggressively the closer that height already is to zero. A wheel notch

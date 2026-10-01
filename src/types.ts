@@ -38,6 +38,10 @@ export interface Theme {
   pointLabelBackground: string;
   /** Default route colour, overridable per route. */
   route: string;
+  /** Route label text colour. A separate field from `pointLabel` so the two can be told apart. */
+  routeLabel: string;
+  /** Backing behind route label text, keeping it readable over land or water. */
+  routeLabelBackground: string;
 }
 
 /** Camera placement. In 2D, `lat`/`lon` are the centre of the view and `tilt`/`bearing` are ignored. */
@@ -73,12 +77,38 @@ export interface GlobeConfig {
     min: number;
     max: number;
     /**
-     * How much one wheel notch, keypress or pinch-doubling changes the height above the surface,
-     * as a multiplier - 1.07 means 7% per notch. Smaller is gentler. This compounds over a
-     * gesture: five notches at the default is roughly a 40% change, ten roughly 2x, so small
-     * adjustments here go a long way.
+     * How much one wheel notch or keypress changes the height above the surface, as a multiplier -
+     * 1.07 means 7% per notch. Smaller is gentler. This compounds over a gesture: five notches at
+     * the default is roughly a 40% change, ten roughly 2x, so small adjustments here go a long way.
+     * Pinch-to-zoom has its own `pinchSensitivity` below, since a touch gesture's natural range of
+     * motion is nothing like a wheel notch.
      */
     speed: number;
+    /**
+     * How much doubling the distance between two fingers changes the height above the surface, as
+     * an exponent applied to that distance ratio - 1 would match the pinch directly (doubling your
+     * finger spread exactly halves your height), which in practice reads as sluggish: a comfortable
+     * pinch only spans a limited physical range, far short of the zoom range people expect to cover
+     * in one gesture. Larger values ask less of your fingers for the same zoom change.
+     */
+    pinchSensitivity: number;
+  };
+  /** How far the camera pulls back to frame points, used by `fitPoints` (and so `resetCamera` does not). */
+  fit: {
+    /**
+     * Multiplier applied to the distance that exactly fits the points, so they sit inside the view
+     * rather than touching its edges - 1.15 leaves about 15% of breathing room on every side. Lower
+     * it for a tighter frame: a map embedded small, where a short route should fill most of the
+     * view rather than leaving most of it as open globe around a couple of dots, wants a smaller
+     * value than one with room to spare.
+     */
+    padding: number;
+    /**
+     * Smallest span `fitPoints` will zoom in for, in degrees - a floor against zooming in so far on
+     * two points close together that the view loses all geographic context. Lower it to let a very
+     * short route fill the frame; raise it to always keep some of the surrounding world in view.
+     */
+    minSpan: number;
   };
   /** Whether pointer, touch and keyboard interaction is enabled at all. */
   interactive: boolean;
@@ -187,6 +217,12 @@ export interface RouteSpec {
   arcHeight?: number;
   /** Samples used for this curve, overriding `config.routes.segments`. */
   segments?: number;
+  /** Short label rendered at the midpoint of the route, for example a flight number. */
+  label?: string;
+  /** Longer line rendered under the label, same as a point's title. */
+  title?: string;
+  /** Set false to draw the route without its label. */
+  labelVisible?: boolean;
   /** Anything the application wants to carry along; returned in event payloads. */
   data?: unknown;
 }
@@ -204,6 +240,7 @@ export interface ResolvedRoute extends RouteSpec {
   color: string;
   width: number;
   opacity: number;
+  labelVisible: boolean;
 }
 
 /** What the pointer is over, if anything. */
@@ -289,8 +326,10 @@ export interface VectorGlobeInstance {
     target: string | Partial<CameraOptions>,
     transition?: CameraTransition,
   ): VectorGlobeInstance;
-  /** Frame the given point ids, or every point when omitted. */
+  /** Frame the given point ids, or every point when omitted. See `config.fit` for how tightly. */
   fitPoints(ids?: string[], transition?: CameraTransition): VectorGlobeInstance;
+  /** Return to the camera position the map was constructed with. */
+  resetCamera(transition?: CameraTransition): VectorGlobeInstance;
 
   on<E extends GlobeEventName>(event: E, handler: GlobeEventHandler<E>): VectorGlobeInstance;
   off<E extends GlobeEventName>(event: E, handler: GlobeEventHandler<E>): VectorGlobeInstance;

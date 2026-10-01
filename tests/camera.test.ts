@@ -145,4 +145,16 @@ describe('fitting a span', () => {
     expect(near).toBeGreaterThanOrEqual(limits.min);
     expect(far).toBeLessThanOrEqual(limits.max);
   });
+
+  it('pulls back less for the same span against a wider field of view', () => {
+    const narrowFov = Camera.altitudeForSpan(20, limits, { fov: 0.4 });
+    const wideFov = Camera.altitudeForSpan(20, limits, { fov: 0.8 });
+    expect(wideFov).toBeLessThan(narrowFov);
+  });
+
+  it('scales the margin left around the fitted span with padding', () => {
+    const snug = Camera.altitudeForSpan(20, limits, { padding: 1 });
+    const padded = Camera.altitudeForSpan(20, limits, { padding: 1.3 });
+    expect(padded).toBeGreaterThan(snug);
+  });
 });

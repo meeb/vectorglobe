@@ -10,6 +10,24 @@ import { angularDistance } from './geo.ts';
 import { length, normalize, slerp, type Vec3 } from './vec3.ts';
 
 /**
+ * No single sampled segment is allowed to span more than this many degrees, however few samples a
+ * caller asks for.
+ *
+ * A screen-space line is one quad per segment, so a segment that leaps a wide angle in a single step
+ * becomes a long, thin quad - and a quad thin enough relative to its length has been observed to
+ * rasterize as nothing at all on some GPUs, silently dropping that stretch of the line. This mostly
+ * bites explicit paths built from real tracking data, where a signal gap can jump straight from one
+ * side of an ocean to the other in a single recorded point; the fix is the same as for any other
+ * jagged curve, just enough samples that no one step has to cover that much ground.
+ */
+const MAX_STEP_ANGLE = (3 * Math.PI) / 180;
+
+/** Steps needed to keep every sample of a span under {@link MAX_STEP_ANGLE}, floored by `minimum`. */
+function stepsForSpan(from: Vec3, to: Vec3, minimum: number): number {
+  return Math.max(minimum, Math.ceil(angularDistance(from, to) / MAX_STEP_ANGLE));
+}
+
+/**
  * Sample a great circle between two positions, lifted into an arc.
  *
  * The apex height scales with how far apart the ends are, so a short hop stays close to the surface
@@ -21,7 +39,7 @@ export function greatCircleArc(
   segments: number,
   arcHeight: number,
 ): Float32Array {
-  const steps = Math.max(2, Math.floor(segments));
+  const steps = stepsForSpan(from, to, Math.max(2, Math.floor(segments)));
   const out = new Float32Array((steps + 1) * 3);
   const separation = angularDistance(from, to) / Math.PI;
   const apex = arcHeight * Math.max(0.15, separation);
@@ -67,11 +85,15 @@ export function smoothPath(positions: Vec3[], segmentsPerSpan: number): Float32A
     return Float32Array.from(positions.flat());
   }
 
-  const steps = Math.max(1, Math.floor(segmentsPerSpan));
+  const minimum = Math.max(1, Math.floor(segmentsPerSpan));
   const directions = positions.map(normalize);
   const radii = positions.map(length);
   const spans = positions.length - 1;
-  const out = new Float32Array((spans * steps + 1) * 3);
+  const spanSteps = Array.from({ length: spans }, (_, span) =>
+    stepsForSpan(positions[span], positions[span + 1], minimum),
+  );
+  const totalSteps = spanSteps.reduce((sum, steps) => sum + steps, 0);
+  const out = new Float32Array(totalSteps * 3 + 3);
   let index = 0;
 
   const at = (i: number): number => Math.min(positions.length - 1, Math.max(0, i));
@@ -81,6 +103,7 @@ export function smoothPath(positions: Vec3[], segmentsPerSpan: number): Float32A
     const i1 = span;
     const i2 = at(span + 1);
     const i3 = at(span + 2);
+    const steps = spanSteps[span];
 
     for (let step = 0; step < steps; step++) {
       const t = step / steps;
@@ -109,9 +132,13 @@ export function linearPath(positions: Vec3[], segmentsPerSpan: number): Float32A
     return Float32Array.from(positions.flat());
   }
 
-  const steps = Math.max(1, Math.floor(segmentsPerSpan));
+  const minimum = Math.max(1, Math.floor(segmentsPerSpan));
   const spans = positions.length - 1;
-  const out = new Float32Array((spans * steps + 1) * 3);
+  const spanSteps = Array.from({ length: spans }, (_, span) =>
+    stepsForSpan(positions[span], positions[span + 1], minimum),
+  );
+  const totalSteps = spanSteps.reduce((sum, steps) => sum + steps, 0);
+  const out = new Float32Array(totalSteps * 3 + 3);
   let index = 0;
 
   for (let span = 0; span < spans; span++) {
@@ -121,6 +148,7 @@ export function linearPath(positions: Vec3[], segmentsPerSpan: number): Float32A
     const b = normalize(to);
     const radiusA = length(from);
     const radiusB = length(to);
+    const steps = spanSteps[span];
 
     for (let step = 0; step < steps; step++) {
       const t = step / steps;

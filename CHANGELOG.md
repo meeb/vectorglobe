@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed part of a route silently failing to render in 3D, most visible on an explicit path built from
+  real tracking data: a signal gap can jump a long way in a single recorded point (a flight losing
+  ADS-B coverage over an ocean and picking back up far away, say), and sampled at the usual rate that
+  one jump became a single long, thin screen-space quad - which rasterizes as nothing at all on some
+  GPUs, taking that stretch of the line down with it even though the data either side was fine. Every
+  path builder now breaks any single sample up further whenever it would otherwise span more than a
+  few degrees, regardless of how coarse the requested sampling rate is (`stepsForSpan` in `curves.ts`).
+  The 2D canvas renderer was never affected - it draws straight line segments with no equivalent
+  thin-quad geometry to go wrong.
+
 ## [0.6.0] - 2026-10-01
 
 ### Added

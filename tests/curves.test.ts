@@ -1,10 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { greatCircleArc, linearPath, smoothPath } from '../src/math/curves.ts';
-import { lonLatToVec3, vec3ToLonLat } from '../src/math/geo.ts';
-import type { Vec3 } from '../src/math/vec3.ts';
+import { angularDistance, lonLatToVec3, vec3ToLonLat } from '../src/math/geo.ts';
+import { normalize, type Vec3 } from '../src/math/vec3.ts';
 
 const radiusAt = (positions: Float32Array, index: number): number =>
   Math.hypot(positions[index * 3], positions[index * 3 + 1], positions[index * 3 + 2]);
+
+/** Largest angle, in degrees, between any two consecutive sampled points. */
+function largestStepDegrees(positions: Float32Array): number {
+  let largest = 0;
+  for (let i = 0; i < positions.length / 3 - 1; i++) {
+    const a: Vec3 = [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
+    const b: Vec3 = [
+      positions[(i + 1) * 3],
+      positions[(i + 1) * 3 + 1],
+      positions[(i + 1) * 3 + 2],
+    ];
+    largest = Math.max(largest, (angularDistance(normalize(a), normalize(b)) * 180) / Math.PI);
+  }
+  return largest;
+}
 
 describe('generated arcs', () => {
   const from = lonLatToVec3(-0.45, 51.47);
@@ -45,6 +60,14 @@ describe('generated arcs', () => {
 
   it('never returns fewer than two points', () => {
     expect(greatCircleArc(from, to, 0, 0.2).length / 3).toBeGreaterThanOrEqual(3);
+  });
+
+  it('subdivides a long arc enough regardless of how few segments were asked for', () => {
+    // Regression test: a long screen-space line built from one wide-angle segment rasterizes as
+    // nothing at all on some GPUs. A near-antipodal arc sampled this coarsely used to produce a
+    // single ~175 degree segment; it must now be broken up no matter how low `segments` is.
+    const arc = greatCircleArc(lonLatToVec3(0, 0), lonLatToVec3(175, 0), 2, 0.3);
+    expect(largestStepDegrees(arc)).toBeLessThanOrEqual(3);
   });
 });
 
@@ -98,5 +121,25 @@ describe('explicit paths', () => {
 
   it('returns the input unchanged when there is nothing to interpolate', () => {
     expect(smoothPath([control[0]], 8).length / 3).toBe(1);
+  });
+
+  it('subdivides a wide jump between two points enough, however low segmentsPerSpan is', () => {
+    // Regression test: real tracking data can jump a long way in one recorded point - a flight's
+    // transponder losing signal over an ocean and picking back up far away, say. Sampled at just
+    // one step per span, that jump used to become a single wide-angle segment that silently failed
+    // to render on some GPUs. Both path builders must now break it into shorter steps regardless.
+    const jumpy: Vec3[] = [
+      lonLatToVec3(-150, 60),
+      lonLatToVec3(-150, 60),
+      lonLatToVec3(140, 38),
+      lonLatToVec3(139, 37),
+    ];
+    for (const build of [linearPath, smoothPath]) {
+      // Not a tight bound on the 3 degree target itself: a Catmull-Rom span isn't sampled at a
+      // uniform angular rate, so a step can slightly overshoot it. What matters for the bug this
+      // guards against is staying far below the ~11-17 degrees a step needed to start silently
+      // failing to render, and this is comfortably under that.
+      expect(largestStepDegrees(build(jumpy, 1))).toBeLessThan(6);
+    }
   });
 });

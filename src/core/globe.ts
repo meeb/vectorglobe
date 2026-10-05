@@ -11,8 +11,8 @@
 
 import { DEFAULT_CONFIG, DEFAULT_THEME, FIELD_OF_VIEW } from '../defaults.ts';
 import { greatCircleArc, linearPath, smoothPath } from '../math/curves.ts';
-import { boundsOf, kmToRadius, lonLatToVec3 } from '../math/geo.ts';
-import type { Vec3 } from '../math/vec3.ts';
+import { angularDistance, boundsOf, kmToRadius, lonLatToVec3 } from '../math/geo.ts';
+import { normalize, type Vec3 } from '../math/vec3.ts';
 import { LabelLayer } from '../overlay/labels.ts';
 import { injectStyles } from '../overlay/styles.ts';
 import { CanvasRenderer } from '../render/canvas2d/canvas-renderer.ts';
@@ -43,6 +43,8 @@ import { resolvePoint, resolveRoute, SceneState } from './state.ts';
 
 /** How close the pointer has to be, in pixels, to count as being over a dot or a route. */
 const HIT_TOLERANCE = 6;
+
+const DEG_TO_RAD = Math.PI / 180;
 
 /** Degrees of tilt or bearing applied per pixel of a tilt drag. */
 const TILT_PER_PIXEL = 0.25;
@@ -92,6 +94,8 @@ export class Globe {
   private hovered: string | null = null;
   private reducedMotion = false;
   private readonly initialCamera: CameraOptions;
+  private hoverFrameHandle: number | null = null;
+  private pendingHover: { x: number; y: number; event: PointerEvent } | null = null;
 
   constructor(container: HTMLElement, options: VectorGlobeOptions = {}) {
     if (!container || typeof container.appendChild !== 'function') {
@@ -368,6 +372,7 @@ export class Globe {
     if (this.frameHandle !== null) {
       cancelAnimationFrame(this.frameHandle);
     }
+    this.cancelQueuedHover();
     this.resizeObserver?.disconnect();
     this.controls.destroy();
     this.labels.destroy();
@@ -442,8 +447,9 @@ export class Globe {
         this.camera.zoomBy(factor);
         this.afterCameraInput();
       },
-      pointerMove: (x, y, event) => this.dispatchPointer('hover', x, y, event),
+      pointerMove: (x, y, event) => this.queueHover(x, y, event),
       pointerLeave: () => {
+        this.cancelQueuedHover();
         if (this.hovered !== null) {
           this.hovered = null;
           this.root.style.cursor = this.config.interactive ? 'grab' : '';
@@ -642,13 +648,9 @@ export class Globe {
           return lonLatToVec3(point[0], point[1], radius);
         });
         const perSpan = Math.max(1, Math.round(segments / Math.max(1, positions.length - 1)));
-        prepared.push({
-          route,
-          positions:
-            spec.curve === 'linear'
-              ? linearPath(positions, perSpan)
-              : smoothPath(positions, perSpan),
-        });
+        const curve =
+          spec.curve === 'linear' ? linearPath(positions, perSpan) : smoothPath(positions, perSpan);
+        prepared.push({ route, positions: curve, bounds: boundingCone(curve) });
         continue;
       }
 
@@ -659,15 +661,13 @@ export class Globe {
         continue;
       }
 
-      prepared.push({
-        route,
-        positions: greatCircleArc(
-          lonLatToVec3(from.lon, from.lat, LAYER_RADIUS.route),
-          lonLatToVec3(to.lon, to.lat, LAYER_RADIUS.route),
-          segments,
-          spec.arcHeight ?? this.config.routes.arcHeight,
-        ),
-      });
+      const arc = greatCircleArc(
+        lonLatToVec3(from.lon, from.lat, LAYER_RADIUS.route),
+        lonLatToVec3(to.lon, to.lat, LAYER_RADIUS.route),
+        segments,
+        spec.arcHeight ?? this.config.routes.arcHeight,
+      );
+      prepared.push({ route, positions: arc, bounds: boundingCone(arc) });
     }
 
     this.preparedRoutes = prepared;
@@ -676,11 +676,43 @@ export class Globe {
     return prepared;
   }
 
+  /**
+   * Coalesce hover hit-testing to once per animation frame.
+   *
+   * `pointermove` can fire far more often than the display refreshes, especially from a trackpad,
+   * and a hit test scans every point and every route sample - repeating that on every raw event
+   * does needless work between frames nothing visible changes in. Only the most recent position
+   * before each frame is tested.
+   */
+  private queueHover(x: number, y: number, event: PointerEvent): void {
+    this.pendingHover = { x, y, event };
+    if (this.hoverFrameHandle !== null) {
+      return;
+    }
+    this.hoverFrameHandle = requestAnimationFrame(() => {
+      this.hoverFrameHandle = null;
+      const pending = this.pendingHover;
+      this.pendingHover = null;
+      if (pending) {
+        this.dispatchPointer('hover', pending.x, pending.y, pending.event);
+      }
+    });
+  }
+
+  private cancelQueuedHover(): void {
+    if (this.hoverFrameHandle !== null) {
+      cancelAnimationFrame(this.hoverFrameHandle);
+      this.hoverFrameHandle = null;
+    }
+    this.pendingHover = null;
+  }
+
   /** Work out what is under the pointer and emit the matching event. */
   private dispatchPointer(kind: 'click' | 'hover', x: number, y: number, event: MouseEvent): void {
     const scene = this.buildScene();
-    const target = this.hitTest(x, y, scene);
     const position = this.renderer.unproject(x, y, scene);
+    const cursor = position ? lonLatToVec3(position[0], position[1], 1) : null;
+    const target = this.hitTest(x, y, scene, cursor);
 
     if (kind === 'hover') {
       const id = target?.id ?? null;
@@ -699,7 +731,7 @@ export class Globe {
     });
   }
 
-  private hitTest(x: number, y: number, scene: Scene): HitTarget | null {
+  private hitTest(x: number, y: number, scene: Scene, cursor: Vec3 | null): HitTarget | null {
     let best: { target: HitTarget; distance: number } | null = null;
 
     for (const point of scene.points) {
@@ -720,7 +752,18 @@ export class Globe {
       return best.target;
     }
 
+    // Degrees of arc one pixel of hit tolerance covers at the current zoom, used below to turn a
+    // route's bounding cone into a quick reject test before checking every one of its samples.
+    const [degreesPerPixel] = cursor ? this.dragScale() : [0, 0];
+
     for (const prepared of scene.routes) {
+      if (cursor) {
+        const margin = (prepared.route.width + HIT_TOLERANCE) * degreesPerPixel * DEG_TO_RAD;
+        if (angularDistance(cursor, prepared.bounds.center) > prepared.bounds.halfAngle + margin) {
+          continue;
+        }
+      }
+
       const positions = prepared.positions;
       for (let i = 0; i < positions.length; i += 3) {
         const projected = this.renderer.project(
@@ -747,6 +790,35 @@ export class Globe {
 
 function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/**
+ * A bounding cone around a route's sampled curve - a unit centre direction and the angle from it
+ * that reaches the furthest sample - cheap to compare a pointer direction against so hit-testing
+ * can rule a route out without checking every one of its samples. Built from the average sample
+ * direction rather than the sphere's true minimal enclosing cone, which is looser than optimal for
+ * an oddly shaped route but always still contains every sample, and is cheap enough to rebuild
+ * whenever a route's geometry changes.
+ */
+function boundingCone(positions: Float32Array): { center: Vec3; halfAngle: number } {
+  const count = positions.length / 3;
+  let sx = 0;
+  let sy = 0;
+  let sz = 0;
+  for (let i = 0; i < count; i++) {
+    const dir = normalize([positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]] as Vec3);
+    sx += dir[0];
+    sy += dir[1];
+    sz += dir[2];
+  }
+  const center = normalize([sx, sy, sz] as Vec3);
+
+  let halfAngle = 0;
+  for (let i = 0; i < count; i++) {
+    const dir = normalize([positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]] as Vec3);
+    halfAngle = Math.max(halfAngle, angularDistance(dir, center));
+  }
+  return { center, halfAngle };
 }
 
 /** A plain deep copy of the configuration, so callers cannot mutate the map's own state. */

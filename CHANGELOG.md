@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Hover hit-testing (pointer move over a point or route) is now coalesced to once per animation
+  frame instead of running on every raw `pointermove` event, which can fire far more often than the
+  display refreshes - a trackpad in particular. Only the most recent pointer position before each
+  frame is tested (`Globe.queueHover` in `globe.ts`).
+- Hit-testing a route now checks a cheap bounding cone around its curve before scanning every one of
+  its samples, so a pointer nowhere near a route skips it in one comparison instead of projecting
+  every sample to screen space. Matters most with many routes on screen at once - clicking or
+  hovering used to cost roughly the same regardless of which route, if any, was actually under the
+  pointer (`boundingCone`, `Globe.hitTest` in `globe.ts`).
+
 ## [0.7.0] - 2026-10-01
 
 ### Fixed

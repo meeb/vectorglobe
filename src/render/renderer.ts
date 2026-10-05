@@ -14,6 +14,12 @@ export interface PreparedRoute {
   route: ResolvedRoute;
   /** Interleaved x/y/z positions along the curve. */
   positions: Float32Array;
+  /**
+   * A bounding cone around the curve, as a unit centre direction and the angle from it that
+   * reaches every sample - cheap to compare a pointer direction against, so hit-testing can skip a
+   * route's samples entirely when the pointer is nowhere near it. See `boundingCone` in `globe.ts`.
+   */
+  bounds: { center: Vec3; halfAngle: number };
 }
 
 /** Everything a renderer needs to draw one frame. */

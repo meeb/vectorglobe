@@ -406,6 +406,145 @@ describe('drawing', () => {
   });
 });
 
+describe('hit testing', () => {
+  // A camera centred on (0, 0) at the projection's reference altitude puts that point exactly in
+  // the middle of the 800x600 stubbed container, which is what makes the click coordinates below
+  // land where the test expects.
+  const centeredCamera = { lat: 0, lon: 0, altitude: 2.5, tilt: 0, bearing: 0 };
+
+  const clickAt = (clientX: number, clientY: number): void => {
+    const root = container.querySelector('.vg-root') as HTMLElement;
+    root.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientX, clientY }),
+    );
+    root.dispatchEvent(
+      new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX, clientY }),
+    );
+  };
+
+  it('reports a click on a point', async () => {
+    map = vectorGlobe(container, {
+      config: { camera: centeredCamera },
+      points: [{ id: 'p', lat: 0, lon: 0 }],
+    });
+    // Hit-testing projects through the renderer's own projection, which is only built once the
+    // first frame has drawn.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const handler = vi.fn();
+    map.on('click', handler);
+
+    clickAt(400, 300);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0].target).toMatchObject({ kind: 'point', id: 'p' });
+  });
+
+  it('reports a click on a route away from any decoy routes', async () => {
+    // Regression test for the bounding-cone pre-check in hitTest: a route far from the pointer
+    // (here, dozens on the far side of the globe) must not make the one under the pointer
+    // unreachable, and a route actually under the pointer must not be skipped by the same check.
+    const decoys = Array.from({ length: 40 }, (_, i) => ({
+      id: `decoy-${i}`,
+      path: [[170, 60] as [number, number], [175, 65] as [number, number]],
+    }));
+    map = vectorGlobe(container, {
+      config: { camera: centeredCamera },
+      routes: [
+        ...decoys,
+        {
+          id: 'target',
+          path: [
+            [-10, 0],
+            [0, 0],
+            [10, 0],
+          ],
+          curve: 'linear',
+        },
+      ],
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const handler = vi.fn();
+    map.on('click', handler);
+
+    clickAt(400, 300);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0].target).toMatchObject({ kind: 'route', id: 'target' });
+  });
+
+  it('reports no target for empty space', async () => {
+    map = vectorGlobe(container, {
+      config: { camera: centeredCamera },
+      points: [{ id: 'p', lat: 40, lon: 40 }],
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const handler = vi.fn();
+    map.on('click', handler);
+
+    clickAt(400, 300);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0][0].target).toBeNull();
+  });
+
+  describe('hover throttling', () => {
+    let pending: Map<number, FrameRequestCallback>;
+
+    beforeEach(() => {
+      let nextHandle = 1;
+      pending = new Map();
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        const handle = nextHandle++;
+        pending.set(handle, callback);
+        return handle;
+      });
+      vi.stubGlobal('cancelAnimationFrame', (handle: number) => pending.delete(handle));
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const tick = (): void => {
+      const callbacks = Array.from(pending.values());
+      pending.clear();
+      for (const callback of callbacks) {
+        callback(0);
+      }
+    };
+
+    it('coalesces rapid pointer moves into one hit test per frame', () => {
+      map = vectorGlobe(container, {
+        config: { camera: centeredCamera },
+        points: [{ id: 'p', lat: 0, lon: 0 }],
+      });
+      // rAF is stubbed in this block, so the map's own first frame needs a manual tick too, to
+      // build the renderer's projection before any hit test can use it.
+      tick();
+      const handler = vi.fn();
+      map.on('hover', handler);
+      const root = container.querySelector('.vg-root') as HTMLElement;
+
+      // Several moves before a frame fires - only the last position should be tested.
+      root.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 10, clientY: 10 }),
+      );
+      root.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 200, clientY: 200 }),
+      );
+      root.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 400, clientY: 300 }),
+      );
+      expect(handler).not.toHaveBeenCalled();
+
+      tick();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0][0].target).toMatchObject({ kind: 'point', id: 'p' });
+    });
+  });
+});
+
 describe('route labels', () => {
   const path: [number, number][] = [
     [-10, 0],

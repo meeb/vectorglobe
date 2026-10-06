@@ -774,6 +774,72 @@ describe('idle rotation', () => {
   });
 });
 
+describe('fading', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('removes a point automatically once its fade finishes', () => {
+    map = vectorGlobe(container, {
+      points: [{ id: 'p', lat: 0, lon: 0, fade: { in: 0.1, stay: 1, out: 0.5 } }],
+    });
+    vi.advanceTimersByTime(16);
+    expect(map.getPoints()).toHaveLength(1);
+
+    vi.advanceTimersByTime(1600);
+    expect(map.getPoints()).toHaveLength(0);
+  });
+
+  it('removes a route automatically once its fade finishes', () => {
+    map = vectorGlobe(container, {
+      points: [
+        { id: 'a', lat: 0, lon: 0 },
+        { id: 'b', lat: 10, lon: 10 },
+      ],
+      routes: [{ id: 'r', from: 'a', to: 'b', fade: { stay: 1 } }],
+    });
+    vi.advanceTimersByTime(16);
+    expect(map.getRoutes()).toHaveLength(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(map.getRoutes()).toHaveLength(0);
+  });
+
+  it('fades a label out over time', () => {
+    map = vectorGlobe(container, {
+      points: [{ id: 'p', lat: 0, lon: 0, label: 'P', fade: { in: 1, stay: 0, out: 1 } }],
+    });
+    vi.advanceTimersByTime(16);
+    const label = container.querySelector('.vg-label') as HTMLElement;
+
+    // Partway through the rise.
+    vi.advanceTimersByTime(500 - 16);
+    expect(Number(label.style.opacity)).toBeGreaterThan(0.3);
+    expect(Number(label.style.opacity)).toBeLessThan(0.7);
+
+    // Partway through the fall.
+    vi.advanceTimersByTime(1000);
+    expect(Number(label.style.opacity)).toBeGreaterThan(0.3);
+    expect(Number(label.style.opacity)).toBeLessThan(0.7);
+  });
+
+  it('does not keep drawing once nothing is fading any more', () => {
+    map = vectorGlobe(container, {
+      points: [{ id: 'p', lat: 0, lon: 0, fade: { stay: 0.1 } }],
+    });
+    vi.advanceTimersByTime(200);
+    expect(map.getPoints()).toHaveLength(0);
+
+    canvas.calls.length = 0;
+    vi.advanceTimersByTime(500);
+    expect(canvas.calls.length).toBe(0);
+  });
+});
+
 describe('teardown', () => {
   it('removes everything it added', () => {
     map = vectorGlobe(container);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolvePoint, resolveRoute, SceneState } from '../src/core/state.ts';
 import { DEFAULT_CONFIG, DEFAULT_THEME } from '../src/defaults.ts';
 
@@ -86,6 +86,120 @@ describe('routes', () => {
     expect(() => state.addRoute({ id: 'c' })).toThrow(/from and to point ids, or a path/);
     expect(() => state.addRoute({ id: 'd', path: [[0, 0]] })).toThrow(/at least two coordinates/);
     expect(() => state.addRoute({ id: 'e', from: 'LHR' })).toThrow(/from and to/);
+  });
+});
+
+describe('fading', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('removes a point on its own once its fade has fully run out', () => {
+    const state = new SceneState();
+    state.addPoint({ ...point, fade: { in: 0.1, stay: 1, out: 0.5 } });
+    expect(state.rawPoint('LHR')).not.toBeUndefined();
+    expect(state.hasFading).toBe(true);
+
+    vi.advanceTimersByTime(1599);
+    expect(state.rawPoint('LHR')).not.toBeUndefined();
+
+    vi.advanceTimersByTime(1);
+    expect(state.rawPoint('LHR')).toBeUndefined();
+    expect(state.hasFading).toBe(false);
+  });
+
+  it('removes a route on its own the same way', () => {
+    const state = new SceneState();
+    state.addRoute({ id: 'r', from: 'a', to: 'b', fade: { stay: 1 } });
+    expect(state.hasFading).toBe(true);
+
+    vi.advanceTimersByTime(1000);
+    expect(state.rawRoute('r')).toBeUndefined();
+    expect(state.hasFading).toBe(false);
+  });
+
+  it('calls back when a fade expires, since that happens outside any caller-initiated change', () => {
+    const onFadeExpire = vi.fn();
+    const state = new SceneState(onFadeExpire);
+    state.addPoint({ ...point, fade: { stay: 1 } });
+
+    vi.advanceTimersByTime(999);
+    expect(onFadeExpire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onFadeExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restart a running countdown when the same fade object is merged back in', () => {
+    const fade = { stay: 1 };
+    const state = new SceneState();
+    state.addPoint({ ...point, fade });
+
+    vi.advanceTimersByTime(900);
+    // Touches something unrelated; `fade` rides along unchanged via the merge in updatePoint.
+    state.updatePoint('LHR', { color: '#fff' });
+    vi.advanceTimersByTime(100);
+
+    expect(state.rawPoint('LHR')).toBeUndefined();
+  });
+
+  it('restarts the countdown when a genuinely new fade is given', () => {
+    const state = new SceneState();
+    state.addPoint({ ...point, fade: { stay: 1 } });
+
+    vi.advanceTimersByTime(900);
+    state.updatePoint('LHR', { fade: { stay: 1 } });
+    vi.advanceTimersByTime(100);
+
+    // The original countdown would have finished by now; the restarted one has not.
+    expect(state.rawPoint('LHR')).not.toBeUndefined();
+
+    vi.advanceTimersByTime(900);
+    expect(state.rawPoint('LHR')).toBeUndefined();
+  });
+
+  it('cancels the timer when the point is removed before it fires', () => {
+    const onFadeExpire = vi.fn();
+    const state = new SceneState(onFadeExpire);
+    state.addPoint({ ...point, fade: { stay: 1 } });
+    state.removePoint('LHR');
+
+    vi.advanceTimersByTime(2000);
+    expect(onFadeExpire).not.toHaveBeenCalled();
+    expect(state.hasFading).toBe(false);
+  });
+
+  it('cancels every pending timer on clearPoints and clearRoutes', () => {
+    const onFadeExpire = vi.fn();
+    const state = new SceneState(onFadeExpire);
+    state.addPoint({ ...point, fade: { stay: 1 } });
+    state.addRoute({ id: 'r', from: 'a', to: 'b', fade: { stay: 1 } });
+    state.clearPoints();
+    state.clearRoutes();
+
+    vi.advanceTimersByTime(2000);
+    expect(onFadeExpire).not.toHaveBeenCalled();
+    expect(state.hasFading).toBe(false);
+  });
+
+  it('cancels every pending timer on destroy, so none fires afterwards', () => {
+    const onFadeExpire = vi.fn();
+    const state = new SceneState(onFadeExpire);
+    state.addPoint({ ...point, fade: { stay: 1 } });
+    state.destroy();
+
+    vi.advanceTimersByTime(2000);
+    expect(onFadeExpire).not.toHaveBeenCalled();
+  });
+
+  it('exposes when a point or route started fading', () => {
+    const state = new SceneState();
+    expect(state.pointFadeStart('LHR')).toBeUndefined();
+    state.addPoint({ ...point, fade: { stay: 1 } });
+    expect(state.pointFadeStart('LHR')).toBeTypeOf('number');
   });
 });
 

@@ -165,6 +165,29 @@ export interface GlobeConfig {
   shading: number;
 }
 
+/**
+ * Opacity animation, for a point or route that should pop onto the map, stay a while and then go
+ * away on its own - a live feed of events rather than a fixed dataset.
+ *
+ * Starts at 0, rises to the point or route's own `opacity` over `in` seconds, holds there for `stay`
+ * seconds, then falls back to 0 over `out` seconds - at which point it is automatically removed, the
+ * same as calling `removePoint`/`removeRoute` yourself. Every phase defaults to 0, so leaving one out
+ * skips it rather than holding forever.
+ *
+ * Re-adding a point or route (`addPoint`/`addRoute`, including the merge `updatePoint`/`updateRoute`
+ * do internally) with the same `fade` object - unchanged, not just equal - leaves an in-progress
+ * countdown running rather than restarting it, so routine updates that merge the existing spec back
+ * in do not silently reset one. Pass a new `fade` object to restart it deliberately.
+ */
+export interface Fade {
+  /** Seconds to rise from 0 to `opacity`. */
+  in?: number;
+  /** Seconds to hold at `opacity`. */
+  stay?: number;
+  /** Seconds to fall back to 0, after which this is removed automatically. */
+  out?: number;
+}
+
 /** A labelled dot, such as an airport. */
 export interface PointSpec {
   /** Unique identifier, also used to reference the point from a route. */
@@ -185,6 +208,8 @@ export interface PointSpec {
   opacity?: number;
   /** Set false to draw the dot without its label. */
   labelVisible?: boolean;
+  /** Pop in, hold, then fade out and remove itself automatically. See {@link Fade}. */
+  fade?: Fade;
   /** Anything the application wants to carry along; returned in event payloads. */
   data?: unknown;
 }
@@ -227,8 +252,17 @@ export interface RouteSpec {
   extraTitle?: string;
   /** Set false to draw the route without its label. */
   labelVisible?: boolean;
+  /** Pop in, hold, then fade out and remove itself automatically. See {@link Fade}. */
+  fade?: Fade;
   /** Anything the application wants to carry along; returned in event payloads. */
   data?: unknown;
+}
+
+/** A fade with every phase resolved to a number, rather than left out. */
+export interface ResolvedFade {
+  in: number;
+  stay: number;
+  out: number;
 }
 
 /** A point with every default resolved. */
@@ -237,6 +271,9 @@ export interface ResolvedPoint extends PointSpec {
   size: number;
   opacity: number;
   labelVisible: boolean;
+  fade?: ResolvedFade;
+  /** When this point's fade began, in the same clock as internal timing - `undefined` without one. */
+  fadeStart?: number;
 }
 
 /** A route with every default resolved. */
@@ -245,6 +282,9 @@ export interface ResolvedRoute extends RouteSpec {
   width: number;
   opacity: number;
   labelVisible: boolean;
+  fade?: ResolvedFade;
+  /** When this route's fade began, in the same clock as internal timing - `undefined` without one. */
+  fadeStart?: number;
 }
 
 /** What the pointer is over, if anything. */

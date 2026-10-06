@@ -106,6 +106,36 @@ map.removeRoute('SIN-LHR');
 map.clearPoints();
 ```
 
+## Fading points and routes in and out
+
+Either can be given a `fade` instead of a fixed `opacity`, for data that arrives live and shouldn't
+stick around forever - a feed of events over a websocket, say, each one popping onto the globe for a
+few seconds and then going away on its own:
+
+```js
+map.addPoint({
+  id: `event-${eventId}`,
+  lat, lon,
+  color: '#ff5050',
+  fade: { in: 0.1, stay: 3, out: 2 },   // seconds: rise, hold, fall
+});
+```
+
+It starts at opacity 0, rises to the point or route's own `opacity` (default 1) over `in` seconds,
+holds there for `stay`, then falls back to 0 over `out` - at which point it's removed automatically,
+the same as calling `removePoint`/`removeRoute` yourself. Any phase can be left out and defaults to 0,
+so `{ stay: 3 }` alone pops in instantly, holds for 3 seconds, and disappears instantly too. A label
+fades along with its point or route, and the two fade independently when both have one, so a route and
+its endpoints can be given different timings if you want them to stand out from each other.
+
+This is built to hold up under a steady stream of short-lived points and routes rather than a fixed
+dataset: a fade animates on the GPU in 3D (from one shared, cheap-to-update clock, not by rebuilding
+anything every frame) and costs nothing once nothing is fading, and each one cleans up after itself on
+a plain timer rather than a loop that has to go looking for what expired. Re-adding a point or route
+with the exact same `fade` value - which is what `updatePoint`/`updateRoute` do internally when a
+change doesn't touch `fade` - leaves a countdown already in progress alone rather than restarting it;
+pass a new `fade` object to restart one on purpose.
+
 ## Theme
 
 Every colour is a plain CSS colour string, and any of them can be changed at any time with

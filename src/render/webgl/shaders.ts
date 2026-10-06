@@ -78,24 +78,56 @@ void main() {
 }
 `;
 
-/** Dots are camera facing quads carrying their own colour and size. */
+/**
+ * Dots are camera facing quads carrying their own colour and size.
+ *
+ * `aFade` is (start, in, stay, out), all in the same milliseconds as `uTime`; `aFade.x < 0.0` means
+ * no fade at all. This mirrors `fadeMultiplier` in `util/fade.ts` exactly - keep the two in step.
+ * Computing it here, once per vertex from one shared `uTime` uniform, is what lets a fade animate
+ * every frame without the dot buffer - shared by every point on the map - needing to be rebuilt to
+ * update it, the way any actual change to a point's data otherwise would.
+ */
 export const DOT_VERTEX = `
 attribute vec3 aCenter;
 attribute vec2 aCorner;
 attribute vec4 aColor;
 attribute float aSize;
+attribute vec4 aFade;
 
 uniform mat4 uViewProjection;
 uniform vec2 uViewport;
+uniform float uTime;
 
 varying vec2 vCorner;
 varying vec4 vColor;
+
+float fadeMultiplier(vec4 fade, float time) {
+  if (fade.x < 0.0) {
+    return 1.0;
+  }
+  float elapsed = time - fade.x;
+  if (elapsed < 0.0) {
+    return 0.0;
+  }
+  if (elapsed < fade.y) {
+    return fade.y > 0.0 ? elapsed / fade.y : 1.0;
+  }
+  float stayEnd = fade.y + fade.z;
+  if (elapsed < stayEnd) {
+    return 1.0;
+  }
+  float outElapsed = elapsed - stayEnd;
+  if (outElapsed < fade.w) {
+    return fade.w > 0.0 ? 1.0 - outElapsed / fade.w : 0.0;
+  }
+  return 0.0;
+}
 
 void main() {
   vec4 clip = uViewProjection * vec4(aCenter, 1.0);
   clip.xy += (aCorner * aSize / uViewport) * clip.w;
   vCorner = aCorner;
-  vColor = aColor;
+  vColor = vec4(aColor.rgb, aColor.a * fadeMultiplier(aFade, uTime));
   gl_Position = clip;
 }
 `;

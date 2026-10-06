@@ -18,8 +18,9 @@ import { buildSphere } from '../../geometry/sphere.ts';
 import { lonLatToVec3, vec3ToLonLat } from '../../math/geo.ts';
 import { type Mat4, transformPoint } from '../../math/mat4.ts';
 import { cross, dot, normalize, sub, type Vec3 } from '../../math/vec3.ts';
-import type { Mode } from '../../types.ts';
+import type { Mode, ResolvedFade } from '../../types.ts';
 import { parseColor } from '../../util/color.ts';
+import { fadeMultiplier } from '../../util/fade.ts';
 import { LAYER_RADIUS, type Projected, type Renderer, type Scene } from '../renderer.ts';
 import { createContext, deleteBuffer, uploadBuffer, type VertexBuffer } from './context.ts';
 import { Program } from './program.ts';
@@ -34,15 +35,32 @@ import {
   SURFACE_VERTEX,
 } from './shaders.ts';
 
-/** Floats per dot vertex: centre, quad corner, colour, size. */
-const DOT_STRIDE = 10;
+/**
+ * Floats per dot vertex: centre, quad corner, colour, size, fade (start, in, stay, out).
+ *
+ * A fade is baked into the buffer as data rather than recomputed on the CPU each frame, since every
+ * dot shares one buffer and rebuilding it every frame to animate opacity would cost as much as
+ * rebuilding it for an actual change to the point set - the one rebuild this renderer otherwise goes
+ * out of its way to avoid. The shader derives live opacity from this plus a single `uTime` uniform
+ * instead, so a fade animates smoothly between real rebuilds at no added per-frame CPU or GPU cost
+ * beyond that one uniform upload. See `fadeMultiplier` in `shaders.ts`, which mirrors `util/fade.ts`.
+ */
+const DOT_STRIDE = 14;
 
 /** Radius of the atmosphere shell, as a multiple of the globe radius. */
 const ATMOSPHERE_RADIUS = 1.12;
 
+/** No fade: the shader is told to just use the colour's own alpha, unanimated. */
+const NO_FADE = -1;
+
 interface RouteBatch {
   buffer: VertexBuffer;
-  color: [number, number, number, number];
+  rgb: [number, number, number];
+  /** Colour's own alpha, before `opacity` or any fade. */
+  alpha: number;
+  opacity: number;
+  fade?: ResolvedFade;
+  fadeStart?: number;
   width: number;
 }
 
@@ -176,10 +194,10 @@ export class WebGLRenderer implements Renderer {
     }
 
     for (const batch of this.routeBatches) {
-      this.drawLineBatch(batch, halfViewport);
+      this.drawLineBatch(batch, halfViewport, scene.time);
     }
 
-    this.drawDots(halfViewport);
+    this.drawDots(halfViewport, scene.time);
 
     if (scene.config.atmosphere.enabled) {
       this.drawAtmosphere(scene.theme.atmosphere, scene.config.atmosphere.strength, eye);
@@ -340,7 +358,11 @@ export class WebGLRenderer implements Renderer {
       const color = parseColor(prepared.route.color);
       this.routeBatches.push({
         buffer,
-        color: [color[0], color[1], color[2], color[3] * prepared.route.opacity],
+        rgb: [color[0], color[1], color[2]],
+        alpha: color[3],
+        opacity: prepared.route.opacity,
+        fade: prepared.route.fade,
+        fadeStart: prepared.route.fadeStart,
         width: prepared.route.width,
       });
     }
@@ -371,6 +393,12 @@ export class WebGLRenderer implements Renderer {
       const position = lonLatToVec3(point.lon, point.lat, LAYER_RADIUS.point);
       const color = parseColor(point.color);
       const alpha = color[3] * point.opacity;
+      // Milliseconds, matching `uTime` - the shader stays in the one unit throughout rather than
+      // converting from the public, seconds-based `Fade` on every vertex of every frame.
+      const fadeStart = point.fade && point.fadeStart !== undefined ? point.fadeStart : NO_FADE;
+      const fadeIn = (point.fade?.in ?? 0) * 1000;
+      const fadeStay = (point.fade?.stay ?? 0) * 1000;
+      const fadeOut = (point.fade?.out ?? 0) * 1000;
       for (const corner of corners) {
         data[offset++] = position[0];
         data[offset++] = position[1];
@@ -382,6 +410,10 @@ export class WebGLRenderer implements Renderer {
         data[offset++] = color[2];
         data[offset++] = alpha;
         data[offset++] = point.size;
+        data[offset++] = fadeStart;
+        data[offset++] = fadeIn;
+        data[offset++] = fadeStay;
+        data[offset++] = fadeOut;
       }
     }
 
@@ -430,14 +462,19 @@ export class WebGLRenderer implements Renderer {
       return;
     }
     const rgba = parseColor(color);
+    // World geometry such as borders never has a `fade`, so the time passed alongside it is never
+    // actually consulted - `fadeMultiplier` returns 1 unconditionally whenever `fade` is undefined.
     this.drawLineBatch(
-      { buffer, color: [rgba[0], rgba[1], rgba[2], rgba[3] * opacity], width },
+      { buffer, rgb: [rgba[0], rgba[1], rgba[2]], alpha: rgba[3], opacity, width },
       halfViewport,
+      0,
     );
   }
 
-  private drawLineBatch(batch: RouteBatch, halfViewport: [number, number]): void {
-    if (!this.viewProjection || batch.color[3] <= 0) {
+  private drawLineBatch(batch: RouteBatch, halfViewport: [number, number], time: number): void {
+    const liveOpacity = batch.opacity * fadeMultiplier(batch.fade, batch.fadeStart, time);
+    const alpha = batch.alpha * liveOpacity;
+    if (!this.viewProjection || alpha <= 0) {
       return;
     }
     const gl = this.gl;
@@ -449,13 +486,7 @@ export class WebGLRenderer implements Renderer {
     gl.uniformMatrix4fv(this.line.uniform('uViewProjection'), false, this.viewProjection);
     gl.uniform2f(this.line.uniform('uViewport'), halfViewport[0], halfViewport[1]);
     gl.uniform1f(this.line.uniform('uWidth'), batch.width * this.pixelRatio);
-    gl.uniform4f(
-      this.line.uniform('uColor'),
-      batch.color[0],
-      batch.color[1],
-      batch.color[2],
-      batch.color[3],
-    );
+    gl.uniform4f(this.line.uniform('uColor'), batch.rgb[0], batch.rgb[1], batch.rgb[2], alpha);
     // Lines sit on the surface and would fight with it for depth, so they test but do not write.
     // Their quads are built in screen space, so their winding is arbitrary and culling must be off.
     gl.disable(gl.CULL_FACE);
@@ -465,7 +496,7 @@ export class WebGLRenderer implements Renderer {
     gl.enable(gl.CULL_FACE);
   }
 
-  private drawDots(halfViewport: [number, number]): void {
+  private drawDots(halfViewport: [number, number], time: number): void {
     if (!this.dotBuffer || !this.viewProjection) {
       return;
     }
@@ -476,8 +507,10 @@ export class WebGLRenderer implements Renderer {
     this.dots.bindAttribute('aCorner', 2, DOT_STRIDE, 3);
     this.dots.bindAttribute('aColor', 4, DOT_STRIDE, 5);
     this.dots.bindAttribute('aSize', 1, DOT_STRIDE, 9);
+    this.dots.bindAttribute('aFade', 4, DOT_STRIDE, 10);
     gl.uniformMatrix4fv(this.dots.uniform('uViewProjection'), false, this.viewProjection);
     gl.uniform2f(this.dots.uniform('uViewport'), halfViewport[0], halfViewport[1]);
+    gl.uniform1f(this.dots.uniform('uTime'), time);
     gl.disable(gl.CULL_FACE);
     gl.depthMask(false);
     gl.drawArrays(gl.TRIANGLES, 0, this.dotBuffer.vertexCount);

@@ -13,6 +13,16 @@ All notable changes to this project are documented here. The format follows
   point's "a very busy airport" or a route's "transatlantic". Independent of `label` and `title`, so
   any one or two of the three can be set without the others (`.vg-label-extra-title` for a CSS
   override; `LabelLayer` in `labels.ts`).
+- `fade` on both `PointSpec` and `RouteSpec`: rise to full opacity over `in` seconds, hold for `stay`,
+  fall back to 0 over `out`, then remove itself - for data that arrives live and shouldn't stick
+  around forever, a feed of events over a websocket say, each one popping onto the globe for a few
+  seconds and going away on its own. Its label fades along with it. Built for a steady stream of many
+  short-lived points and routes rather than a handful of fixed ones: in 3D, opacity is animated on the
+  GPU from one shared `uTime` uniform and a few extra floats of per-vertex data written once, rather
+  than by rebuilding the shared point buffer (or, for a route, its own buffer) every frame to update
+  it, and each fade cleans itself up on a plain `setTimeout` rather than a loop that scans for what
+  expired (`fadeMultiplier` in `util/fade.ts`, mirrored in the dot vertex shader in `shaders.ts`;
+  fade scheduling and cleanup in `SceneState` in `state.ts`).
 
 ### Changed
 

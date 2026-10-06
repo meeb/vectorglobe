@@ -39,6 +39,8 @@ export interface Scene {
   routesRevision: number;
   /** Bumped when the theme or configuration changes. */
   styleRevision: number;
+  /** Current time, same clock as a point or route's `fadeStart`, for animating a fade. */
+  time: number;
 }
 
 /** Where a globe space position lands on screen. */

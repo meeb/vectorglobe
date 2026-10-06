@@ -35,6 +35,7 @@ import type {
   VectorGlobeOptions,
 } from '../types.ts';
 import { deepMerge } from '../util/merge.ts';
+import { now } from '../util/time.ts';
 import { Camera } from './camera.ts';
 import { detectCapabilities } from './capabilities.ts';
 import { Controls, type ControlsDelegate } from './controls.ts';
@@ -66,7 +67,7 @@ export class Globe {
 
   private theme: Theme;
   private config: GlobeConfig;
-  private state = new SceneState();
+  private state = new SceneState(() => this.invalidate());
   private camera: Camera;
   private emitter = new Emitter();
   private renderer: Renderer;
@@ -179,11 +180,17 @@ export class Globe {
 
   getPoint(id: string): ResolvedPoint | undefined {
     const spec = this.state.rawPoint(id);
-    return spec ? resolvePoint(spec, this.theme, this.config) : undefined;
+    return spec
+      ? resolvePoint(spec, this.theme, this.config, this.state.pointFadeStart(id))
+      : undefined;
   }
 
   getPoints(): ResolvedPoint[] {
-    return this.state.rawPoints().map((spec) => resolvePoint(spec, this.theme, this.config));
+    return this.state
+      .rawPoints()
+      .map((spec) =>
+        resolvePoint(spec, this.theme, this.config, this.state.pointFadeStart(spec.id)),
+      );
   }
 
   clearPoints(): void {
@@ -215,11 +222,17 @@ export class Globe {
 
   getRoute(id: string): ResolvedRoute | undefined {
     const spec = this.state.rawRoute(id);
-    return spec ? resolveRoute(spec, this.theme, this.config) : undefined;
+    return spec
+      ? resolveRoute(spec, this.theme, this.config, this.state.routeFadeStart(id))
+      : undefined;
   }
 
   getRoutes(): ResolvedRoute[] {
-    return this.state.rawRoutes().map((spec) => resolveRoute(spec, this.theme, this.config));
+    return this.state
+      .rawRoutes()
+      .map((spec) =>
+        resolveRoute(spec, this.theme, this.config, this.state.routeFadeStart(spec.id)),
+      );
   }
 
   clearRoutes(): void {
@@ -373,6 +386,7 @@ export class Globe {
       cancelAnimationFrame(this.frameHandle);
     }
     this.cancelQueuedHover();
+    this.state.destroy();
     this.resizeObserver?.disconnect();
     this.controls.destroy();
     this.labels.destroy();
@@ -557,7 +571,12 @@ export class Globe {
     const cameraMoved = this.camera.update(time);
     const rotated = this.applyAutoRotate(elapsed, time);
 
-    if (this.dirty || cameraMoved || rotated) {
+    // A fade in progress changes what's on screen every frame even though nothing else has, the
+    // same way a moving camera does - and unlike other causes of a dirty frame, that isn't a one-off
+    // event this method gets told about, so it's checked here directly rather than through `dirty`.
+    const fading = this.state.hasFading;
+
+    if (this.dirty || cameraMoved || rotated || fading) {
       this.dirty = false;
       const scene = this.buildScene();
       this.renderer.render(scene);
@@ -568,7 +587,7 @@ export class Globe {
     // to keep ticking even on a frame it did not move the camera: the very first frame has no
     // previous timestamp to measure against, and a rotation paused by interaction needs frames in
     // order to notice that it is time to resume.
-    if (cameraMoved || this.autoRotateTicking()) {
+    if (cameraMoved || this.autoRotateTicking() || fading) {
       this.requestFrame();
     }
   }
@@ -618,6 +637,7 @@ export class Globe {
       pointsRevision: this.state.pointsRevision,
       routesRevision: this.state.routesRevision,
       styleRevision: this.styleRevision,
+      time: now(),
     };
   }
 
@@ -637,7 +657,7 @@ export class Globe {
 
     const prepared: PreparedRoute[] = [];
     for (const spec of this.state.rawRoutes()) {
-      const route = resolveRoute(spec, this.theme, this.config);
+      const route = resolveRoute(spec, this.theme, this.config, this.state.routeFadeStart(spec.id));
       const segments = spec.segments ?? this.config.routes.segments;
 
       if (spec.path && spec.path.length >= 2) {
@@ -786,10 +806,6 @@ export class Globe {
 
     return best?.target ?? null;
   }
-}
-
-function now(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
 /**

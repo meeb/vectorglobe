@@ -13,6 +13,7 @@ import { lonLatToVec3 } from '../math/geo.ts';
 import type { Vec3 } from '../math/vec3.ts';
 import { LAYER_RADIUS, type Renderer, type Scene } from '../render/renderer.ts';
 import type { ResolvedPoint } from '../types.ts';
+import { fadeMultiplier } from '../util/fade.ts';
 
 interface LabelEntry {
   element: HTMLElement;
@@ -65,8 +66,9 @@ export class LabelLayer {
       const position = lonLatToVec3(point.lon, point.lat, LAYER_RADIUS.point);
       const projected = renderer.project(position, scene);
       const entry = this.entryFor(point);
+      const opacity = fadeMultiplier(point.fade, point.fadeStart, scene.time);
 
-      if (!projected.visible) {
+      if (!projected.visible || opacity <= 0) {
         this.setVisible(entry, false);
         continue;
       }
@@ -84,6 +86,7 @@ export class LabelLayer {
       }
 
       this.setVisible(entry, true);
+      this.setOpacity(entry, point.fade ? opacity : null);
       entry.element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
     }
 
@@ -114,8 +117,9 @@ export class LabelLayer {
         route.extraTitle,
         'vg-route-label',
       );
+      const opacity = fadeMultiplier(route.fade, route.fadeStart, scene.time);
 
-      if (!projected.visible) {
+      if (!projected.visible || opacity <= 0) {
         this.setVisible(entry, false);
         continue;
       }
@@ -135,6 +139,7 @@ export class LabelLayer {
       }
 
       this.setVisible(entry, true);
+      this.setOpacity(entry, route.fade ? opacity : null);
       entry.element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
     }
 
@@ -218,6 +223,14 @@ export class LabelLayer {
     if (entry.visible !== visible) {
       entry.visible = visible;
       entry.element.style.display = visible ? '' : 'none';
+    }
+  }
+
+  /** Pass `null` for a label with no fade. Only writes the style when the value actually changed. */
+  private setOpacity(entry: LabelEntry, opacity: number | null): void {
+    const value = opacity === null ? '' : String(opacity);
+    if (entry.element.style.opacity !== value) {
+      entry.element.style.opacity = value;
     }
   }
 

@@ -14,6 +14,7 @@ import { vec3ToLonLat } from '../../math/geo.ts';
 import type { Vec3 } from '../../math/vec3.ts';
 import type { GlobeConfig, Mode, Theme } from '../../types.ts';
 import { parseColor, toCssRgba } from '../../util/color.ts';
+import { fadeMultiplier } from '../../util/fade.ts';
 import type { Projected, Renderer, Scene } from '../renderer.ts';
 import { FlatProjection, unwrapLongitudes } from './projection.ts';
 
@@ -317,7 +318,10 @@ export class CanvasRenderer implements Renderer {
 
     for (const prepared of scene.routes) {
       const rgba = parseColor(prepared.route.color);
-      if (rgba[3] <= 0) {
+      const opacity =
+        prepared.route.opacity *
+        fadeMultiplier(prepared.route.fade, prepared.route.fadeStart, scene.time);
+      if (rgba[3] <= 0 || opacity <= 0) {
         continue;
       }
 
@@ -333,7 +337,7 @@ export class CanvasRenderer implements Renderer {
       }
       unwrapLongitudes(points);
 
-      context.strokeStyle = toCssRgba(rgba, prepared.route.opacity);
+      context.strokeStyle = toCssRgba(rgba, opacity);
       context.lineWidth = prepared.route.width;
       for (const offset of copies) {
         context.beginPath();
@@ -354,10 +358,11 @@ export class CanvasRenderer implements Renderer {
     const context = this.context;
     for (const point of scene.points) {
       const rgba = parseColor(point.color);
-      if (rgba[3] <= 0) {
+      const opacity = point.opacity * fadeMultiplier(point.fade, point.fadeStart, scene.time);
+      if (rgba[3] <= 0 || opacity <= 0) {
         continue;
       }
-      context.fillStyle = toCssRgba(rgba, point.opacity);
+      context.fillStyle = toCssRgba(rgba, opacity);
       const [baseX, y] = projection.project(point.lon, point.lat);
       for (const offset of copies) {
         const x = baseX + offset;

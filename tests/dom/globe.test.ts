@@ -404,6 +404,26 @@ describe('drawing', () => {
     expect(canvas.calls).toContain('stroke');
     expect(canvas.calls).toContain('arc');
   });
+
+  it('keeps drawing after the last point is removed', async () => {
+    // Regression test: in the WebGL renderer (not exercised by this suite, which falls back to 2D
+    // with no GPU here - see the file header) removing the last point used to leave the globe
+    // permanently blank. Deleting the now-empty shared point buffer dropped it, but not the vertex
+    // attribute arrays still pointing at it, which is separate, global context state - the *next*
+    // draw call on the context, even one using a wholly different shader program, then failed
+    // validation and silently drew nothing, every frame from then on. Covered for real against an
+    // actual WebGL context with Playwright during development; kept here mainly so the land/water
+    // fill this does exercise keeps happening at all once the scene is empty.
+    map = vectorGlobe(container, { points: [{ id: 'only', lat: 0, lon: 0 }] });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    map.removePoint('only');
+    canvas.calls.length = 0;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(map.getPoints()).toHaveLength(0);
+    expect(canvas.calls).toContain('fill');
+  });
 });
 
 describe('hit testing', () => {

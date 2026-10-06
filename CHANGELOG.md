@@ -50,6 +50,19 @@ All notable changes to this project are documented here. The format follows
   with a depth comparison a flat quad was never quite able to answer correctly off-centre (`shaders.ts`,
   `WebGLRenderer.drawDots` in `webgl-renderer.ts`). The 2D canvas renderer was never affected - it has
   no depth buffer and already drew dots correctly.
+- Fixed the whole 3D globe sometimes going permanently blank - nothing drawn at all, not even land and
+  water - after removing the last point (or, since routes can now reach zero opacity on their own
+  through a fade, after the last visible route faded out). Deleting the now-empty shared buffer behind
+  it drops the GPU buffer, but not the vertex attribute arrays that pointed at it - enabled-ness is
+  state the GPU context keeps globally, not something scoped to one buffer. Left enabled with nothing
+  bound, those failed the *next* draw call issued on the context - even one using a completely
+  different shader program for completely different geometry, since WebGL validates that every
+  currently-enabled attribute has a live buffer behind it regardless of whether the active program
+  actually reads that one - silently drawing nothing, forever, since nothing re-enables it until a
+  point or route exists again. Every program's attributes are now explicitly released at the start of
+  each frame rather than piecemeal wherever a draw happens to get skipped, which left the earlier
+  draws in that same frame - and, for the very last draw call of a frame, the first few draws of the
+  *next* one - still exposed (`WebGLRenderer.resetAttributes` in `webgl-renderer.ts`).
 
 ## [0.7.0] - 2026-10-01
 

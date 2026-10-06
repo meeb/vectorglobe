@@ -137,6 +137,7 @@ export class WebGLRenderer implements Renderer {
     this.syncWorldGeometry(scene);
     this.syncRoutes(scene);
     this.syncPoints(scene);
+    this.resetAttributes();
 
     const gl = this.gl;
     const aspect = this.width / this.height;
@@ -420,20 +421,40 @@ export class WebGLRenderer implements Renderer {
     this.dotBuffer = uploadBuffer(this.gl, this.dotBuffer, data, DOT_STRIDE);
   }
 
+  /**
+   * Disable every vertex attribute array this renderer ever enables, so each frame starts from a
+   * clean slate rather than carrying over whatever the previous one left bound.
+   *
+   * A vertex attribute array, once enabled, stays enabled regardless of whether the buffer backing
+   * it still exists - that is global context state, not something scoped to one buffer. Deleting a
+   * buffer - the point or route it belonged to having just been removed, say, leaving nothing left to
+   * draw with that program this frame - does not disable the attributes that pointed at it. Left
+   * enabled with nothing bound, they fail the *next* draw call that runs on this context with "no
+   * buffer is bound to enabled attribute" - even one using a wholly different program, since
+   * validation does not care which program is active, only that every currently-enabled slot has a
+   * buffer behind it - silently drawing nothing. Run once before any drawing starts rather than
+   * reactively wherever a draw gets skipped: a skip only protects whatever runs *after* it, and nothing
+   * here draws in a fixed enough order to guarantee the one draw call that would otherwise inherit
+   * stale state always comes after the skip that caused it, this frame or the next.
+   */
+  private resetAttributes(): void {
+    this.surface.disableAttributes(['aPosition']);
+    this.line.disableAttributes(['aStart', 'aEnd', 'aSideT']);
+    this.dots.disableAttributes(['aCenter', 'aCorner', 'aColor', 'aSize', 'aFade']);
+    this.atmosphere.disableAttributes(['aPosition']);
+  }
+
   private drawSurface(
     buffer: VertexBuffer | null,
     color: string,
     eyeDirection: Vec3,
     shade: number,
   ): void {
-    if (!buffer || !this.viewProjection) {
+    if (!buffer || !this.viewProjection || parseColor(color)[3] <= 0) {
       return;
     }
     const gl = this.gl;
     const rgba = parseColor(color);
-    if (rgba[3] <= 0) {
-      return;
-    }
 
     this.surface.use();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer.buffer);

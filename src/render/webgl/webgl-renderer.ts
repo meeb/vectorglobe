@@ -197,7 +197,7 @@ export class WebGLRenderer implements Renderer {
       this.drawLineBatch(batch, halfViewport, scene.time);
     }
 
-    this.drawDots(halfViewport, scene.time);
+    this.drawDots(halfViewport, scene.time, eye);
 
     if (scene.config.atmosphere.enabled) {
       this.drawAtmosphere(scene.theme.atmosphere, scene.config.atmosphere.strength, eye);
@@ -496,7 +496,7 @@ export class WebGLRenderer implements Renderer {
     gl.enable(gl.CULL_FACE);
   }
 
-  private drawDots(halfViewport: [number, number], time: number): void {
+  private drawDots(halfViewport: [number, number], time: number, eye: Vec3): void {
     if (!this.dotBuffer || !this.viewProjection) {
       return;
     }
@@ -511,10 +511,19 @@ export class WebGLRenderer implements Renderer {
     gl.uniformMatrix4fv(this.dots.uniform('uViewProjection'), false, this.viewProjection);
     gl.uniform2f(this.dots.uniform('uViewport'), halfViewport[0], halfViewport[1]);
     gl.uniform1f(this.dots.uniform('uTime'), time);
+    gl.uniform3f(this.dots.uniform('uEye'), eye[0], eye[1], eye[2]);
     gl.disable(gl.CULL_FACE);
+    // The far side of the globe is hidden by the shader itself now (see shaders.ts), exactly rather
+    // than by depth-testing a flat quad against the curved surface beneath it, which this dot being
+    // a billboard - one constant depth across the whole quad - made unreliable off-centre. Nothing
+    // else a dot is drawn against needs depth testing: land and water are the only other things drawn
+    // this close to the surface, and depth testing against them was never for anything but this same
+    // far-side case.
+    gl.disable(gl.DEPTH_TEST);
     gl.depthMask(false);
     gl.drawArrays(gl.TRIANGLES, 0, this.dotBuffer.vertexCount);
     gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
   }
 

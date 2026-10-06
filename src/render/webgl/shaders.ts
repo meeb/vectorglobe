@@ -81,6 +81,23 @@ void main() {
 /**
  * Dots are camera facing quads carrying their own colour and size.
  *
+ * A dot does not depth test against the globe the way everything else does (see the file header).
+ * It is a flat, camera-facing quad at one constant depth - its centre's - while the sphere beneath it
+ * curves away on every side, so the two depths only actually agree right at the quad's own centre.
+ * Off-centre, the true surface is further away than the flat quad guesses it to be, by more the
+ * further the dot sits from the middle of the view - harmless most of the time since the quad is
+ * still nearer than that guess, but not always: near the horizon the gap closes and part of the quad
+ * can end up testing as behind ground that, in reality, it clears. No fixed amount of padding above
+ * the surface fixes this in general - it would need to grow with distance from the view's centre to
+ * cover every angle, and a fixed choice is either wasteful face-on or still wrong near the limb.
+ *
+ * Hiding the far side of the globe is the only reason a dot was depth tested against it at all, so
+ * this instead asks the exact question that was standing in for - `project()` below uses the same
+ * one on the CPU for labels and hit-testing: a point at or above the surface is on the visible side
+ * exactly when `dot(position, eye) >= 1`. Below that, the whole dot - not just part of its quad - is
+ * pushed to a degenerate, off-screen position, which is cheap (once per vertex, no texture or buffer
+ * reads) and exact at every angle, not just within whatever margin a fixed radius happened to cover.
+ *
  * `aFade` is (start, in, stay, out), all in the same milliseconds as `uTime`; `aFade.x < 0.0` means
  * no fade at all. This mirrors `fadeMultiplier` in `util/fade.ts` exactly - keep the two in step.
  * Computing it here, once per vertex from one shared `uTime` uniform, is what lets a fade animate
@@ -97,6 +114,7 @@ attribute vec4 aFade;
 uniform mat4 uViewProjection;
 uniform vec2 uViewport;
 uniform float uTime;
+uniform vec3 uEye;
 
 varying vec2 vCorner;
 varying vec4 vColor;
@@ -124,6 +142,11 @@ float fadeMultiplier(vec4 fade, float time) {
 }
 
 void main() {
+  if (dot(aCenter, uEye) < 1.0) {
+    // Degenerate: a zero clip-space position is discarded by the rasteriser rather than drawn.
+    gl_Position = vec4(0.0, 0.0, 0.0, 0.0);
+    return;
+  }
   vec4 clip = uViewProjection * vec4(aCenter, 1.0);
   clip.xy += (aCorner * aSize / uViewport) * clip.w;
   vCorner = aCorner;

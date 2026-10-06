@@ -36,6 +36,21 @@ All notable changes to this project are documented here. The format follows
   hovering used to cost roughly the same regardless of which route, if any, was actually under the
   pointer (`boundingCone`, `Globe.hitTest` in `globe.ts`).
 
+### Fixed
+
+- Fixed a dot in 3D sometimes rendering with a flat-edged bite out of it instead of a full circle,
+  worst for a dot well off the centre of the view - it took a route ending at one to notice, but no
+  route was actually involved. A dot is a flat, camera-facing quad at one constant depth, depth-tested
+  against the globe to hide it on the far side; off-centre, the sphere's true surface curves away
+  faster than that flat guess accounts for, so part of the quad could test as behind ground it
+  actually clears. No fixed amount of padding above the surface fixes this in general, since the gap
+  needed grows with distance from the centre of the view. Dots no longer depth test against the globe
+  at all - the vertex shader now hides the far side exactly, with the same `dot(position, eye) >= 1`
+  test `project()` already used on the CPU for labels and hit-testing, rather than approximating it
+  with a depth comparison a flat quad was never quite able to answer correctly off-centre (`shaders.ts`,
+  `WebGLRenderer.drawDots` in `webgl-renderer.ts`). The 2D canvas renderer was never affected - it has
+  no depth buffer and already drew dots correctly.
+
 ## [0.7.0] - 2026-10-01
 
 ### Fixed

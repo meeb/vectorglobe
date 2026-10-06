@@ -175,6 +175,8 @@ export interface PointSpec {
   label?: string;
   /** Longer name, rendered under the tag. */
   title?: string;
+  /** A third, more muted line rendered under the title - optional supplementary detail. */
+  extraTitle?: string;
   /** Overrides `theme.point`. */
   color?: string;
   /** Radius in pixels. */
@@ -221,6 +223,8 @@ export interface RouteSpec {
   label?: string;
   /** Longer line rendered under the label, same as a point's title. */
   title?: string;
+  /** A third, more muted line rendered under the title - optional supplementary detail. */
+  extraTitle?: string;
   /** Set false to draw the route without its label. */
   labelVisible?: boolean;
   /** Anything the application wants to carry along; returned in event payloads. */

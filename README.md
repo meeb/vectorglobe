@@ -50,6 +50,7 @@ map.addPoint({
   lon: 103.9915,
   label: 'SIN',                 // short tag, drawn next to the dot
   title: 'Singapore Changi',    // longer name, drawn under the tag
+  extraTitle: 'Terminal 3',     // optional third, more muted line under the title
   color: '#ffb347',             // defaults to theme.point
   size: 4,                      // radius in pixels
   opacity: 1,
@@ -81,6 +82,7 @@ map.addRoute({
   color: '#8bf7a0',
   label: 'BA178',                // short tag, drawn at the midpoint of the curve
   title: 'Heathrow to Kennedy',  // longer name, drawn under the tag - same layout as a point's
+  extraTitle: 'Transatlantic',   // optional third, more muted line under the title
 });
 ```
 
@@ -88,12 +90,13 @@ Altitude is in kilometres above sea level and is ignored by the 2D renderer, whi
 track. Use `curve: 'linear'` when your coordinates are already dense enough that you want them joined
 rather than smoothed.
 
-A route's `label` and `title` sit at the midpoint of its curve, laid out the same way as a point's tag
-and title - the midpoint of the great circle for a generated route, or of the sampled curve for an
-explicit path. Set `labelVisible: false` to keep them set but hidden, the same as a point's. They're
-themed by `theme.routeLabel` and `theme.routeLabelBackground` rather than the point label colours, so
-the two kinds of label can look different if you want them to - set both pairs to the same colours to
-make them match instead.
+A route's `label`, `title` and `extraTitle` sit at the midpoint of its curve, laid out the same way as
+a point's - the midpoint of the great circle for a generated route, or of the sampled curve for an
+explicit path. Any of the three can be set independently of the others; whichever are present stack
+into however many lines that leaves. Set `labelVisible: false` to keep them set but hidden, the same as
+a point's. They're themed by `theme.routeLabel` and `theme.routeLabelBackground` rather than the point
+label colours, so the two kinds of label can look different if you want them to - set both pairs to the
+same colours to make them match instead.
 
 Everything is keyed by id, so anything can be changed or removed later:
 
@@ -129,8 +132,8 @@ const map = vectorGlobe(container, {
 ```
 
 Labels are ordinary DOM elements, so they can also be restyled from your own stylesheet through
-`.vg-label`, `.vg-label-tag` and `.vg-label-title`; a route's label additionally carries `.vg-route-label`,
-so it can be targeted separately from a point's.
+`.vg-label`, `.vg-label-tag`, `.vg-label-title` and `.vg-label-extra-title`; a route's label additionally
+carries `.vg-route-label`, so it can be targeted separately from a point's.
 
 A pale theme usually wants much less edge shading than the dark default, or the globe picks up a dirty
 ring around its edge:

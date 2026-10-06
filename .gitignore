@@ -8,3 +8,4 @@ coverage/
 .vitest/
 examples/vectorglobe.js
 examples/vectorglobe.js.map
+resume.txt

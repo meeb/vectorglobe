@@ -18,6 +18,7 @@ interface LabelEntry {
   element: HTMLElement;
   tag: HTMLElement;
   title: HTMLElement;
+  extraTitle: HTMLElement;
   /** Cached measurement, refreshed only when the text changes. */
   width: number;
   height: number;
@@ -56,7 +57,7 @@ export class LabelLayer {
     const offset = scene.config.labels.offset;
 
     for (const point of scene.points) {
-      if (!point.labelVisible || (!point.label && !point.title)) {
+      if (!point.labelVisible || (!point.label && !point.title && !point.extraTitle)) {
         continue;
       }
       seen.add(point.id);
@@ -98,7 +99,7 @@ export class LabelLayer {
 
     for (const prepared of scene.routes) {
       const { route } = prepared;
-      if (!route.labelVisible || (!route.label && !route.title)) {
+      if (!route.labelVisible || (!route.label && !route.title && !route.extraTitle)) {
         continue;
       }
       seenRoutes.add(route.id);
@@ -110,6 +111,7 @@ export class LabelLayer {
         route.id,
         route.label,
         route.title,
+        route.extraTitle,
         'vg-route-label',
       );
 
@@ -157,7 +159,7 @@ export class LabelLayer {
   }
 
   private entryFor(point: ResolvedPoint): LabelEntry {
-    return this.labelEntry(this.entries, point.id, point.label, point.title);
+    return this.labelEntry(this.entries, point.id, point.label, point.title, point.extraTitle);
   }
 
   /** Shared by point and route labels, which differ only in which map they are tracked in. */
@@ -166,10 +168,11 @@ export class LabelLayer {
     id: string,
     label: string | undefined,
     title: string | undefined,
+    extraTitle: string | undefined,
     extraClass?: string,
   ): LabelEntry {
     let entry = store.get(id);
-    const text = `${label ?? ''} ${title ?? ''}`;
+    const text = `${label ?? ''} ${title ?? ''} ${extraTitle ?? ''}`;
 
     if (!entry) {
       const element = this.document.createElement('div');
@@ -178,9 +181,20 @@ export class LabelLayer {
       tag.className = 'vg-label-tag';
       const titleElement = this.document.createElement('span');
       titleElement.className = 'vg-label-title';
-      element.append(tag, titleElement);
+      const extraTitleElement = this.document.createElement('span');
+      extraTitleElement.className = 'vg-label-extra-title';
+      element.append(tag, titleElement, extraTitleElement);
       this.element.appendChild(element);
-      entry = { element, tag, title: titleElement, width: 0, height: 0, text: '', visible: true };
+      entry = {
+        element,
+        tag,
+        title: titleElement,
+        extraTitle: extraTitleElement,
+        width: 0,
+        height: 0,
+        text: '',
+        visible: true,
+      };
       store.set(id, entry);
     }
 
@@ -188,8 +202,10 @@ export class LabelLayer {
       entry.text = text;
       entry.tag.textContent = label ?? '';
       entry.title.textContent = title ?? '';
+      entry.extraTitle.textContent = extraTitle ?? '';
       entry.tag.hidden = !label;
       entry.title.hidden = !title;
+      entry.extraTitle.hidden = !extraTitle;
       // Measured once per text change; reading these every frame would force a layout each time.
       entry.width = entry.element.offsetWidth;
       entry.height = entry.element.offsetHeight;

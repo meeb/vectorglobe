@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `extraTitle` on both `PointSpec` and `RouteSpec`, a third, more muted line rendered under `title` -
+  optional supplementary detail a design needs room for beyond the short tag and the title, such as a
+  point's "a very busy airport" or a route's "transatlantic". Independent of `label` and `title`, so
+  any one or two of the three can be set without the others (`.vg-label-extra-title` for a CSS
+  override; `LabelLayer` in `labels.ts`).
+
 ### Changed
 
 - Hover hit-testing (pointer move over a point or route) is now coalesced to once per animation

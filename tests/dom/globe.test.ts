@@ -545,6 +545,42 @@ describe('hit testing', () => {
   });
 });
 
+describe('point labels', () => {
+  it('draws label, title and extraTitle as three stacked lines', async () => {
+    map = vectorGlobe(container, {
+      points: [
+        {
+          id: 'LHR',
+          lat: 51.47,
+          lon: -0.4543,
+          label: 'LHR',
+          title: 'London Heathrow',
+          extraTitle: 'A very busy airport',
+        },
+      ],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-label');
+    expect(label?.querySelector('.vg-label-tag')?.textContent).toBe('LHR');
+    expect(label?.querySelector('.vg-label-title')?.textContent).toBe('London Heathrow');
+    expect(label?.querySelector('.vg-label-extra-title')?.textContent).toBe('A very busy airport');
+  });
+
+  it('draws a label from extraTitle alone', async () => {
+    map = vectorGlobe(container, {
+      points: [{ id: 'LHR', lat: 51.47, lon: -0.4543, extraTitle: 'A very busy airport' }],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-label');
+    expect(label).not.toBeNull();
+    expect((label?.querySelector('.vg-label-tag') as HTMLElement)?.hidden).toBe(true);
+    expect((label?.querySelector('.vg-label-title') as HTMLElement)?.hidden).toBe(true);
+    expect(label?.querySelector('.vg-label-extra-title')?.textContent).toBe('A very busy airport');
+  });
+});
+
 describe('route labels', () => {
   const path: [number, number][] = [
     [-10, 0],
@@ -588,6 +624,39 @@ describe('route labels', () => {
     expect(label).not.toBeNull();
     expect((label?.querySelector('.vg-label-tag') as HTMLElement)?.hidden).toBe(true);
     expect(label?.querySelector('.vg-label-title')?.textContent).toBe('Heathrow to Kennedy');
+  });
+
+  it('draws extraTitle as a third line under the title', async () => {
+    map = vectorGlobe(container, {
+      routes: [
+        {
+          id: 'r',
+          path,
+          label: 'BA178',
+          title: 'Heathrow to Kennedy',
+          extraTitle: 'Transatlantic',
+        },
+      ],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-route-label');
+    expect(label?.querySelector('.vg-label-tag')?.textContent).toBe('BA178');
+    expect(label?.querySelector('.vg-label-title')?.textContent).toBe('Heathrow to Kennedy');
+    expect(label?.querySelector('.vg-label-extra-title')?.textContent).toBe('Transatlantic');
+  });
+
+  it('draws a label from extraTitle alone', async () => {
+    map = vectorGlobe(container, {
+      routes: [{ id: 'r', path, extraTitle: 'Transatlantic' }],
+    });
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const label = container.querySelector('.vg-route-label');
+    expect(label).not.toBeNull();
+    expect((label?.querySelector('.vg-label-tag') as HTMLElement)?.hidden).toBe(true);
+    expect((label?.querySelector('.vg-label-title') as HTMLElement)?.hidden).toBe(true);
+    expect(label?.querySelector('.vg-label-extra-title')?.textContent).toBe('Transatlantic');
   });
 
   it('respects labelVisible', async () => {

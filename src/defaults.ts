@@ -35,7 +35,7 @@ export const DEFAULT_CONFIG: GlobeConfig = {
   labels: { enabled: true, collide: true, offset: 8 },
   borders: { enabled: true, width: 1 },
   land: { enabled: true },
-  routes: { segments: 64, arcHeight: 0.35, width: 1.5 },
+  routes: { segments: 64, arcHeight: 0.35, autoHeight: false, width: 1.5 },
   points: { size: 4 },
   projection: 'equirectangular',
   pixelRatio: 'auto',

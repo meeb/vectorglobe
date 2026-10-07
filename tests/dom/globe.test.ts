@@ -137,6 +137,25 @@ describe('scene contents', () => {
     expect(map.getPoints()).toHaveLength(0);
     expect(map.getRoutes()).toHaveLength(0);
   });
+
+  it('accepts a generated route with a height in km and an autoHeight flag', () => {
+    map = vectorGlobe(container, {
+      points: [
+        { id: 'a', lat: 0, lon: 0 },
+        { id: 'b', lat: 10, lon: 10 },
+      ],
+      routes: [{ id: 'r', from: 'a', to: 'b', height: 500, autoHeight: true }],
+    });
+    expect(map.getRoute('r')).toMatchObject({ height: 500, autoHeight: true });
+  });
+
+  it('merges config.routes.autoHeight without losing the other route defaults', () => {
+    map = vectorGlobe(container, { config: { routes: { autoHeight: true } } });
+    const config = map.getConfig();
+    expect(config.routes.autoHeight).toBe(true);
+    expect(config.routes.arcHeight).toBe(0.35);
+    expect(config.routes.segments).toBe(64);
+  });
 });
 
 describe('styling', () => {

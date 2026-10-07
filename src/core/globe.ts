@@ -681,11 +681,18 @@ export class Globe {
         continue;
       }
 
+      // `height` is kilometres, the same unit as an explicit path's altitude; `arcHeight` and the
+      // config default are already a fraction of the globe radius, what `greatCircleArc` wants.
+      const arcHeight =
+        spec.height !== undefined
+          ? kmToRadius(spec.height) - 1
+          : (spec.arcHeight ?? this.config.routes.arcHeight);
       const arc = greatCircleArc(
         lonLatToVec3(from.lon, from.lat, LAYER_RADIUS.route),
         lonLatToVec3(to.lon, to.lat, LAYER_RADIUS.route),
         segments,
-        spec.arcHeight ?? this.config.routes.arcHeight,
+        arcHeight,
+        spec.autoHeight ?? this.config.routes.autoHeight,
       );
       prepared.push({ route, positions: arc, bounds: boundingCone(arc) });
     }

@@ -144,6 +144,8 @@ export interface GlobeConfig {
     segments: number;
     /** Apex height of a generated arc as a fraction of the globe radius, scaled by route length. */
     arcHeight: number;
+    /** Default for `RouteSpec.autoHeight`, for every generated route that does not set its own. */
+    autoHeight: boolean;
     width: number;
   };
   /** Defaults applied to points that do not override them. */
@@ -242,6 +244,21 @@ export interface RouteSpec {
   opacity?: number;
   /** Apex height of a generated arc as a fraction of the globe radius. */
   arcHeight?: number;
+  /**
+   * Apex height of a generated arc in kilometres - a more direct alternative to `arcHeight` for one
+   * route, in real-world units instead of a fraction of the globe. Overrides `arcHeight` and
+   * `config.routes.arcHeight` for this route. Only applies to a route generated from `from`/`to`; an
+   * explicit `path` already gives altitude per coordinate, so this is ignored for one.
+   */
+  height?: number;
+  /**
+   * Scale a generated route's apex down for a short hop, so two nearby points (LHR to MAN, say) get
+   * a gentle curve rather than an apex taller than the route is long. A route far enough apart to
+   * need the usual apex is unaffected - this only ever makes a short route's apex smaller, never a
+   * long one's larger. Applies whether the apex comes from `height`, `arcHeight`, or the config
+   * default. Defaults to `config.routes.autoHeight`.
+   */
+  autoHeight?: boolean;
   /** Samples used for this curve, overriding `config.routes.segments`. */
   segments?: number;
   /** Short label rendered at the midpoint of the route, for example a flight number. */

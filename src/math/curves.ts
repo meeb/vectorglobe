@@ -32,17 +32,26 @@ function stepsForSpan(from: Vec3, to: Vec3, minimum: number): number {
  *
  * The apex height scales with how far apart the ends are, so a short hop stays close to the surface
  * while a long haul bows out properly. This is what makes a map of flight routes readable.
+ *
+ * That scaling has a floor at a separation of 0.15 (27 degrees, roughly 3000km) by default, so a
+ * route much shorter than that still gets a visible curve rather than fading to flat - fine for a
+ * typical point of comparison, but for two points genuinely close together (LHR to MAN, say, barely
+ * 2 degrees apart) it does the opposite of what it is for: the apex ends up taller than the route is
+ * long, reading as a spike straight up and down rather than an arc. `autoHeight` drops the floor, so
+ * the apex keeps scaling down with separation all the way to zero instead of clamping - the one thing
+ * it never does is make a long route's apex any taller than the floored version already was.
  */
 export function greatCircleArc(
   from: Vec3,
   to: Vec3,
   segments: number,
   arcHeight: number,
+  autoHeight = false,
 ): Float32Array {
   const steps = stepsForSpan(from, to, Math.max(2, Math.floor(segments)));
   const out = new Float32Array((steps + 1) * 3);
   const separation = angularDistance(from, to) / Math.PI;
-  const apex = arcHeight * Math.max(0.15, separation);
+  const apex = arcHeight * (autoHeight ? separation : Math.max(0.15, separation));
   const startRadius = length(from);
   const endRadius = length(to);
   const a = normalize(from);

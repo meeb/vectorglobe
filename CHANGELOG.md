@@ -23,6 +23,16 @@ All notable changes to this project are documented here. The format follows
   it, and each fade cleans itself up on a plain `setTimeout` rather than a loop that scans for what
   expired (`fadeMultiplier` in `util/fade.ts`, mirrored in the dot vertex shader in `shaders.ts`;
   fade scheduling and cleanup in `SceneState` in `state.ts`).
+- `RouteSpec.height`, an apex height in kilometres for a generated route - a more direct alternative
+  to `arcHeight`'s fraction of the globe radius, for picking an exact height for one route.
+- `RouteSpec.autoHeight` and `config.routes.autoHeight`. A generated arc's apex already scales down
+  with how far apart its two points are, but only down to a floor of 27 degrees (roughly 3000km) -
+  fine for a normal point of comparison, but two points genuinely close together (LHR to MAN, barely
+  2 degrees apart) still got an apex taller than the route is long, reading as a spike straight up and
+  down rather than a curve. `autoHeight` drops that floor for a route (or, set on `config.routes`,
+  every generated route that does not say otherwise), so the apex keeps scaling down with distance
+  instead of clamping. A route that already clears the floor is unaffected either way (`greatCircleArc`
+  in `curves.ts`).
 
 ### Changed
 

@@ -66,6 +66,21 @@ between them and bows it into an arc:
 map.addRoute({ id: 'SIN-LHR', from: 'SIN', to: 'LHR', color: '#4fc3f7', width: 1.5 });
 ```
 
+The arc's apex is `arcHeight` (a fraction of the globe radius, default from `config.routes.arcHeight`)
+scaled by how far apart the two points are, so a short hop stays low and a long haul bows out properly
+- down to a floor of 27 degrees apart (roughly 3000km), below which the apex stops shrinking further.
+That floor is what a normal point of comparison wants, but for two points genuinely close together -
+LHR to MAN, say, barely 2 degrees apart - it produces an apex taller than the route is long, reading as
+a spike rather than a curve. `autoHeight: true` drops the floor for that one route, so the apex keeps
+scaling down all the way to a gentle curve; `config.routes.autoHeight` sets it for every generated
+route that doesn't say otherwise. Neither ever makes a route that already clears the floor any taller.
+`height` sets the apex directly in kilometres instead of as a fraction of the globe, for a route you
+want to pick an exact height for:
+
+```js
+map.addRoute({ id: 'LHR-MAN', from: 'LHR', to: 'MAN', height: 20, autoHeight: true });
+```
+
 ...or **explicit**, where you give the coordinates to follow. Each point is `[lon, lat]` or
 `[lon, lat, altitudeKm]`, and the curve is fitted through every one of them:
 
@@ -189,7 +204,7 @@ const map = vectorGlobe(container, {
     labels: { enabled: true, collide: true, offset: 8 },
     borders: { enabled: true, width: 1 },
     land: { enabled: true },
-    routes: { segments: 64, arcHeight: 0.35, width: 1.5 },
+    routes: { segments: 64, arcHeight: 0.35, autoHeight: false, width: 1.5 },
     points: { size: 4 },
     projection: 'equirectangular',  // 2D only; 'mercator' is also available
     pixelRatio: 'auto',

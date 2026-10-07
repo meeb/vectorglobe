@@ -69,6 +69,45 @@ describe('generated arcs', () => {
     const arc = greatCircleArc(lonLatToVec3(0, 0), lonLatToVec3(175, 0), 2, 0.3);
     expect(largestStepDegrees(arc)).toBeLessThanOrEqual(3);
   });
+
+  describe('autoHeight', () => {
+    // LHR to MAN is about 2.3 degrees apart - well under the 27 degree (0.15 separation) floor that
+    // otherwise keeps a short hop's apex as tall as a ~3000km route's, the bug this exists to fix.
+    const lhr = lonLatToVec3(-0.4543, 51.47);
+    const man = lonLatToVec3(-2.2744, 53.3537);
+
+    it('is off by default, the same apex a route always had', () => {
+      const withoutFlag = greatCircleArc(lhr, man, 16, 0.3);
+      const explicitlyOff = greatCircleArc(lhr, man, 16, 0.3, false);
+      const peak = Math.floor(withoutFlag.length / 3 / 2);
+      expect(radiusAt(withoutFlag, peak)).toBeCloseTo(radiusAt(explicitlyOff, peak), 10);
+    });
+
+    it('lowers the apex of a short hop below the floored default', () => {
+      const floored = greatCircleArc(lhr, man, 16, 0.3, false);
+      const scaled = greatCircleArc(lhr, man, 16, 0.3, true);
+      const peak = Math.floor(floored.length / 3 / 2);
+      expect(radiusAt(scaled, peak)).toBeLessThan(radiusAt(floored, peak));
+    });
+
+    it('never raises a short hop above the length it would otherwise bow to', () => {
+      // The height above the surface, not the full radius: an apex taller than the route is long is
+      // exactly the spike this is meant to prevent.
+      const scaled = greatCircleArc(lhr, man, 16, 0.3, true);
+      const peak = Math.floor(scaled.length / 3 / 2);
+      const separationKm = angularDistance(lhr, man) * 6371;
+      const apexKm = (radiusAt(scaled, peak) - 1) * 6371;
+      expect(apexKm).toBeLessThan(separationKm);
+    });
+
+    it('leaves a route far enough apart unaffected', () => {
+      const lax = lonLatToVec3(-118.4085, 33.9416);
+      const withFlag = greatCircleArc(lhr, lax, 16, 0.3, true);
+      const withoutFlag = greatCircleArc(lhr, lax, 16, 0.3, false);
+      const peak = Math.floor(withFlag.length / 3 / 2);
+      expect(radiusAt(withFlag, peak)).toBeCloseTo(radiusAt(withoutFlag, peak), 5);
+    });
+  });
 });
 
 describe('explicit paths', () => {

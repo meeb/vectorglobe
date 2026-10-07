@@ -77,6 +77,16 @@ All notable changes to this project are documented here. The format follows
   each frame rather than piecemeal wherever a draw happens to get skipped, which left the earlier
   draws in that same frame - and, for the very last draw call of a frame, the first few draws of the
   *next* one - still exposed (`WebGLRenderer.resetAttributes` in `webgl-renderer.ts`).
+- Fixed the graticule breaking up into dashes when zoomed in. Each sample pair is joined by a straight
+  3D chord rather than a further-curved line, and that chord dips below the sphere it traces - a
+  sagitta that grows with the square of the sample spacing. At the old 5 degree sample step the dip was
+  about 0.00095 of a globe radius, well past the 0.0002 gap `LAYER_RADIUS.graticule` keeps above land,
+  so every chord's middle sat under the land surface and depth-tested as hidden. Invisible zoomed out,
+  where that gap is far below what the depth buffer can even resolve, but exact enough to show every
+  time once zooming in sharpens that precision enough to catch it - the grid then read as dashed rather
+  than drawn, breaking up more the closer the camera got. Samples are now taken every 1 degree instead
+  of 5, bringing the dip down to about 0.000038 - comfortably inside the gap at any zoom (`SAMPLE_STEP`
+  in `graticule.ts`).
 
 ## [0.7.0] - 2026-10-01
 

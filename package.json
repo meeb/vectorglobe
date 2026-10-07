@@ -1,6 +1,6 @@
 {
   "name": "@meeby/vectorglobe",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "All-in-one fast vector world map rendering for websites. Self-contained 3D globe with a 2D fallback, no tiles, no runtime dependencies.",
   "keywords": [
     "map",

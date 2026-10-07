@@ -125,7 +125,12 @@ export interface GlobeConfig {
   /** Latitude and longitude grid. */
   graticule: { enabled: boolean; step: number; width: number };
   /** Atmospheric rim light, 3D only. */
-  atmosphere: { enabled: boolean; strength: number };
+  atmosphere: {
+    enabled: boolean;
+    strength: number;
+    /** How far the rim light extends above the surface, in kilometres. */
+    height: number;
+  };
   /** Dot labels. */
   labels: {
     enabled: boolean;

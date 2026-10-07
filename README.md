@@ -200,7 +200,7 @@ const map = vectorGlobe(container, {
     interactive: true,
     autoRotate: { enabled: false, speed: 3, pauseOnInteract: true, resumeAfter: 4000 },
     graticule: { enabled: false, step: 15, width: 1 },
-    atmosphere: { enabled: true, strength: 1 },
+    atmosphere: { enabled: true, strength: 1, height: 764.52 },  // height in km above the surface
     labels: { enabled: true, collide: true, offset: 8 },
     borders: { enabled: true, width: 1 },
     land: { enabled: true },
@@ -243,6 +243,10 @@ one, two points right on top of each other would zoom in until the rest of the w
 geographic context was lost; lower it to let a genuinely short route fill the frame, raise it to always
 keep some surrounding world in view. Both apply independently on each axis, so a route that runs mostly
 east-west is framed against the container's horizontal field of view rather than its vertical one.
+
+`atmosphere.height` is how far the rim light shell extends above the surface, in kilometres (3D only).
+The default, `764.52`, reproduces the look this always had; raise it for a thicker, softer-looking rim,
+lower it for a tighter one hugging the limb more closely.
 
 Only the fields you pass are overridden; everything nested is merged, so
 `setConfig({ graticule: { enabled: true } })` leaves `graticule.step` alone.

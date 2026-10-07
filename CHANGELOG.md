@@ -33,6 +33,10 @@ All notable changes to this project are documented here. The format follows
   every generated route that does not say otherwise), so the apex keeps scaling down with distance
   instead of clamping. A route that already clears the floor is unaffected either way (`greatCircleArc`
   in `curves.ts`).
+- `config.atmosphere.height`, how far the rim light shell extends above the surface in kilometres
+  (3D only) - previously a fixed multiple of the globe radius with no way to adjust it. Defaults to
+  `764.52`, reproducing the old fixed shell exactly, so existing maps render unchanged
+  (`WebGLRenderer.syncWorldGeometry` in `webgl-renderer.ts`).
 
 ### Changed
 

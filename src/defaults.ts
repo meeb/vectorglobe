@@ -31,7 +31,8 @@ export const DEFAULT_CONFIG: GlobeConfig = {
   interactive: true,
   autoRotate: { enabled: false, speed: 3, pauseOnInteract: true, resumeAfter: 4000 },
   graticule: { enabled: false, step: 15, width: 1 },
-  atmosphere: { enabled: true, strength: 1 },
+  // 764.52km reproduces the fixed 1.12x globe-radius shell this used to be hardcoded to.
+  atmosphere: { enabled: true, strength: 1, height: 764.52 },
   labels: { enabled: true, collide: true, offset: 8 },
   borders: { enabled: true, width: 1 },
   land: { enabled: true },

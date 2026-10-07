@@ -15,7 +15,7 @@ import { buildGraticule } from '../../geometry/graticule.ts';
 import { buildBorderPaths, buildLandMesh } from '../../geometry/landmesh.ts';
 import { buildLineVertices, LINE_STRIDE } from '../../geometry/lines.ts';
 import { buildSphere } from '../../geometry/sphere.ts';
-import { lonLatToVec3, vec3ToLonLat } from '../../math/geo.ts';
+import { kmToRadius, lonLatToVec3, vec3ToLonLat } from '../../math/geo.ts';
 import { type Mat4, transformPoint } from '../../math/mat4.ts';
 import { cross, dot, normalize, sub, type Vec3 } from '../../math/vec3.ts';
 import type { Mode, ResolvedFade } from '../../types.ts';
@@ -46,9 +46,6 @@ import {
  * beyond that one uniform upload. See `fadeMultiplier` in `shaders.ts`, which mirrors `util/fade.ts`.
  */
 const DOT_STRIDE = 14;
-
-/** Radius of the atmosphere shell, as a multiple of the globe radius. */
-const ATMOSPHERE_RADIUS = 1.12;
 
 /** No fade: the shader is told to just use the colour's own alpha, unanimated. */
 const NO_FADE = -1;
@@ -85,6 +82,7 @@ export class WebGLRenderer implements Renderer {
 
   private builtGraticuleStep = -1;
   private builtSphereSegments = -1;
+  private builtAtmosphereHeight = Number.NaN;
   private builtPointsRevision = -1;
   private builtRoutesRevision = -1;
   private builtStyleRevision = -1;
@@ -299,7 +297,8 @@ export class WebGLRenderer implements Renderer {
   private syncWorldGeometry(scene: Scene): void {
     const gl = this.gl;
 
-    if (this.builtSphereSegments !== scene.config.sphereSegments) {
+    const segmentsChanged = this.builtSphereSegments !== scene.config.sphereSegments;
+    if (segmentsChanged) {
       this.builtSphereSegments = scene.config.sphereSegments;
       this.sphereBuffer = uploadBuffer(
         gl,
@@ -307,10 +306,13 @@ export class WebGLRenderer implements Renderer {
         buildSphere(LAYER_RADIUS.globe, scene.config.sphereSegments),
         3,
       );
+    }
+    if (segmentsChanged || this.builtAtmosphereHeight !== scene.config.atmosphere.height) {
+      this.builtAtmosphereHeight = scene.config.atmosphere.height;
       this.atmosphereBuffer = uploadBuffer(
         gl,
         this.atmosphereBuffer,
-        buildSphere(ATMOSPHERE_RADIUS, scene.config.sphereSegments),
+        buildSphere(kmToRadius(scene.config.atmosphere.height), scene.config.sphereSegments),
         3,
       );
     }

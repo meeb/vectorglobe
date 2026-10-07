@@ -156,6 +156,14 @@ describe('scene contents', () => {
     expect(config.routes.arcHeight).toBe(0.35);
     expect(config.routes.segments).toBe(64);
   });
+
+  it('merges config.atmosphere.height without losing the other atmosphere defaults', () => {
+    map = vectorGlobe(container, { config: { atmosphere: { height: 300 } } });
+    const config = map.getConfig();
+    expect(config.atmosphere.height).toBe(300);
+    expect(config.atmosphere.enabled).toBe(true);
+    expect(config.atmosphere.strength).toBe(1);
+  });
 });
 
 describe('styling', () => {
